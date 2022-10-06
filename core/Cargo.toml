@@ -1,0 +1,33 @@
+[package]
+name = "v4l2-core"
+description = "Linux V4L2 device interfacing"
+version = "0.1.0"
+authors = ["K. <kayo@illumium.org>"]
+license = "MIT"
+readme = "README.md"
+categories = ["os", "os::linux-apis"]
+keywords = ["V4L", "V4L2", "Linux", "ioctl"]
+edition = "2021"
+
+[dependencies.bitmask-enum]
+version = "2"
+
+[dependencies.nix]
+version = "0.25"
+default-features = false
+features = ["ioctl"]
+
+[dependencies.clap]
+version = "3"
+default-features = false
+features = ["std", "derive"]
+optional = true
+
+[dependencies.serde]
+version = "1"
+default-features = false
+features = ["std", "derive"]
+optional = true
+
+[features]
+default = []
