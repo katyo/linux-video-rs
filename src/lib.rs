@@ -1,5 +1,7 @@
-pub use v4l2_core::interface::*;
+pub use v4l2_core::types;
 use v4l2_core::*;
+
+use types::*;
 
 use std::{
     fs::File,
@@ -39,6 +41,13 @@ impl Device {
         }
     }
 
+    /// Get control by identifier
+    pub fn control(&self, id: impl AsRef<u32>) -> Result<Control> {
+        let ctrl = Internal::<QueryExtCtrl>::query_fallback(self.as_raw_fd(), *id.as_ref())?;
+
+        Ok(Control { ctrl })
+    }
+
     /// Get control menu items
     pub fn control_items<'i, 'c>(&'i self, control: &'c Control) -> Option<MenuItems<'i>> {
         if control.is_menu() {
@@ -54,8 +63,8 @@ impl Device {
     }
 
     /// Get control value
-    pub fn control_get(&self, control: &Control) -> Result<Value> {
-        let mut value = Internal::<Value>::from(&control.ctrl);
+    pub fn control_get<C: AsRef<QueryExtCtrl>>(&self, control: C) -> Result<Value<C>> {
+        let mut value = Internal::<Value<C>>::from(control);
 
         value.get(self.file.as_raw_fd())?;
 
@@ -63,19 +72,16 @@ impl Device {
     }
 
     /// Set control value
-    pub fn control_set(&self, value: &Value) -> Result<()> {
+    pub fn control_set<C: AsRef<QueryExtCtrl>>(&self, value: &Value<C>) -> Result<()> {
         Internal::from(value).set(self.file.as_raw_fd())
     }
 
     /// Get control values
-    pub fn controls_get<'i>(
+    pub fn controls_get<C: AsRef<QueryExtCtrl>>(
         &self,
-        controls: impl IntoIterator<Item = &'i Control>,
-    ) -> Result<Values> {
-        let mut values: Internal<Values> = controls
-            .into_iter()
-            .map(|ctrl| ctrl.ctrl.as_ref())
-            .collect();
+        controls: impl IntoIterator<Item = C>,
+    ) -> Result<Values<C>> {
+        let mut values: Internal<Values<C>> = controls.into_iter().collect();
 
         values.get(self.file.as_raw_fd())?;
 
@@ -83,7 +89,7 @@ impl Device {
     }
 
     /// Set control values
-    pub fn controls_set(&self, controls: &mut Values) -> Result<()> {
+    pub fn controls_set<C: AsRef<QueryExtCtrl>>(&self, controls: &mut Values<C>) -> Result<()> {
         Internal::from(controls).set(self.file.as_raw_fd())
     }
 }
@@ -125,6 +131,12 @@ impl core::ops::Deref for Control {
     type Target = QueryExtCtrl;
 
     fn deref(&self) -> &Self::Target {
+        &self.ctrl
+    }
+}
+
+impl AsRef<QueryExtCtrl> for Control {
+    fn as_ref(&self) -> &QueryExtCtrl {
         &self.ctrl
     }
 }

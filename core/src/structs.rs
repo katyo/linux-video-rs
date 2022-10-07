@@ -1,4 +1,4 @@
-use crate::{consts::*, interface::*};
+use crate::{consts::*, enums::*, fourcc::*, stdid::*};
 pub(crate) use nix::sys::time::{TimeSpec, TimeVal};
 pub(crate) use std::os::raw::{c_int as int, c_ulong as ulong, c_void as void};
 pub(crate) use u8 as char_; // To unify all C-strings
@@ -15,7 +15,7 @@ pub struct Edid {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlH264Sps {
+pub struct H264Sps {
     pub(crate) profile_idc: u8,
     pub(crate) constraint_set_flags: u8,
     pub(crate) level_idc: u8,
@@ -38,7 +38,7 @@ pub struct CtrlH264Sps {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlH264Pps {
+pub struct H264Pps {
     pub(crate) pic_parameter_set_id: u8,
     pub(crate) seq_parameter_set_id: u8,
     pub(crate) num_slice_groups_minus1: u8,
@@ -54,7 +54,7 @@ pub struct CtrlH264Pps {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlH264ScalingMatrix {
+pub struct H264ScalingMatrix {
     pub(crate) scaling_list_4x4: [[u8; 16]; 6],
     pub(crate) scaling_list_8x8: [[u8; 64]; 6],
 }
@@ -70,7 +70,7 @@ pub struct H264WeightFactors {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlH264PredWeights {
+pub struct H264PredWeights {
     pub(crate) luma_log2_weight_denom: u16,
     pub(crate) chroma_log2_weight_denom: u16,
     pub(crate) weight_factors: [H264WeightFactors; 2],
@@ -85,7 +85,7 @@ pub struct H264Reference {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlH264SliceParams {
+pub struct H264SliceParams {
     pub(crate) header_bit_size: u32,
     pub(crate) first_mb_in_slice: u32,
     pub(crate) slice_type: u8,
@@ -120,7 +120,7 @@ pub struct H264DpbEntry {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlH264DecodeParams {
+pub struct H264DecodeParams {
     pub(crate) dpb: [H264DpbEntry; H264_NUM_DPB_ENTRIES],
     pub(crate) nal_ref_idc: u16,
     pub(crate) frame_num: u16,
@@ -140,7 +140,7 @@ pub struct CtrlH264DecodeParams {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlFwhtParams {
+pub struct FwhtParams {
     pub(crate) backward_ref_ts: u64,
     pub(crate) version: FwhtVersion,
     pub(crate) width: u32,
@@ -206,7 +206,7 @@ pub struct Vp8EntropyCoderState {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlVp8Frame {
+pub struct Vp8Frame {
     pub(crate) segment: Vp8Segment,
     pub(crate) lf: Vp8LoopFilter,
     pub(crate) quant: Vp8Quantization,
@@ -233,7 +233,7 @@ pub struct CtrlVp8Frame {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlMpeg2Sequence {
+pub struct Mpeg2Sequence {
     pub(crate) horizontal_size: u16,
     pub(crate) vertical_size: u16,
     pub(crate) vbv_buffer_size: u32,
@@ -244,7 +244,7 @@ pub struct CtrlMpeg2Sequence {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlMpeg2Picture {
+pub struct Mpeg2Picture {
     pub(crate) backward_ref_ts: u64,
     pub(crate) forward_ref_ts: u64,
     pub(crate) flags: u32,
@@ -257,7 +257,7 @@ pub struct CtrlMpeg2Picture {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlMpeg2Quantisation {
+pub struct Mpeg2Quantisation {
     pub(crate) intra_quantiser_matrix: [u8; 64],
     pub(crate) non_intra_quantiser_matrix: [u8; 64],
     pub(crate) chroma_intra_quantiser_matrix: [u8; 64],
@@ -266,14 +266,14 @@ pub struct CtrlMpeg2Quantisation {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlHdr10CllInfo {
+pub struct Hdr10CllInfo {
     pub(crate) max_content_light_level: u16,
     pub(crate) max_pic_average_light_level: u16,
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlHdr10MasteringDisplay {
+pub struct Hdr10MasteringDisplay {
     pub(crate) display_primaries_x: [u16; 3],
     pub(crate) display_primaries_y: [u16; 3],
     pub(crate) white_point_x: u16,
@@ -316,7 +316,7 @@ pub struct Vp9Segmentation {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlVp9Frame {
+pub struct Vp9Frame {
     pub(crate) lf: Vp9LoopFilter,
     pub(crate) quant: Vp9Quantization,
     pub(crate) seg: Vp9Segmentation,
@@ -358,7 +358,7 @@ pub struct Vp9MvProbs {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct CtrlVp9CompressedHdr {
+pub struct Vp9CompressedHdr {
     pub(crate) tx_mode: u8,
     pub(crate) tx8: [[u8; 1]; 2],
     pub(crate) tx16: [[u8; 2]; 2],
@@ -859,19 +859,19 @@ pub(crate) union ExtControlUnion {
     pub(crate) p_u16: *mut u16,
     pub(crate) p_u32: *mut u32,
     pub(crate) p_area: *mut Area,
-    pub(crate) p_h264_sps: *mut CtrlH264Sps,
-    pub(crate) p_h264_pps: *mut CtrlH264Pps,
-    pub(crate) p_h264_scaling_matrix: *mut CtrlH264ScalingMatrix,
-    pub(crate) p_h264_pred_weights: *mut CtrlH264PredWeights,
-    pub(crate) p_h264_slice_params: *mut CtrlH264SliceParams,
-    pub(crate) p_h264_decode_params: *mut CtrlH264DecodeParams,
-    pub(crate) p_fwht_params: *mut CtrlFwhtParams,
-    pub(crate) p_vp8_frame: *mut CtrlVp8Frame,
-    pub(crate) p_mpeg2_sequence: *mut CtrlMpeg2Sequence,
-    pub(crate) p_mpeg2_picture: *mut CtrlMpeg2Picture,
-    pub(crate) p_mpeg2_quantisation: *mut CtrlMpeg2Quantisation,
-    pub(crate) p_vp9_compressed_hdr_probs: *mut CtrlVp9CompressedHdr,
-    pub(crate) p_vp9_frame: *mut CtrlVp9Frame,
+    pub(crate) p_h264_sps: *mut H264Sps,
+    pub(crate) p_h264_pps: *mut H264Pps,
+    pub(crate) p_h264_scaling_matrix: *mut H264ScalingMatrix,
+    pub(crate) p_h264_pred_weights: *mut H264PredWeights,
+    pub(crate) p_h264_slice_params: *mut H264SliceParams,
+    pub(crate) p_h264_decode_params: *mut H264DecodeParams,
+    pub(crate) p_fwht_params: *mut FwhtParams,
+    pub(crate) p_vp8_frame: *mut Vp8Frame,
+    pub(crate) p_mpeg2_sequence: *mut Mpeg2Sequence,
+    pub(crate) p_mpeg2_picture: *mut Mpeg2Picture,
+    pub(crate) p_mpeg2_quantisation: *mut Mpeg2Quantisation,
+    pub(crate) p_vp9_compressed_hdr_probs: *mut Vp9CompressedHdr,
+    pub(crate) p_vp9_frame: *mut Vp9Frame,
     pub(crate) ptr: *mut void,
 }
 
@@ -1415,4 +1415,30 @@ pub struct CreateBuffers {
     pub(crate) capabilities: BufferCapabilityFlag,
     pub(crate) flags: BufferFlag,
     pub(crate) reserved: [u32; 6],
+}
+
+value_impl! {
+    i32: Integer,
+    bool: Boolean,
+    i64: Integer64,
+    CtrlClass: CtrlClass,
+    u8: U8 BitMask Menu IntegerMenu,
+    u16: U16 BitMask Menu IntegerMenu,
+    u32: U32 BitMask Menu IntegerMenu,
+    Area: Area,
+    Hdr10CllInfo: Hdr10CllInfo,
+    Hdr10MasteringDisplay: Hdr10MasteringDisplay,
+    H264Sps: H264Sps,
+    H264Pps: H264Pps,
+    H264ScalingMatrix: H264ScalingMatrix,
+    H264SliceParams: H264SliceParams,
+    H264DecodeParams: H264DecodeParams,
+    H264PredWeights: H264PredWeights,
+    FwhtParams: FwhtParams,
+    //Vp8Params: Vp8Params,
+    Mpeg2Quantisation: Mpeg2Quantisation,
+    Mpeg2Sequence: Mpeg2Sequence,
+    Mpeg2Picture: Mpeg2Picture,
+    Vp9CompressedHdr: Vp9CompressedHdr,
+    Vp9Frame: Vp9Frame,
 }

@@ -80,6 +80,16 @@ macro_rules! enum_impl {
     };
 }
 
+macro_rules! value_impl {
+    ($($type:ty: $($ctrl_type:ident)*,)*) => {
+        $(
+            impl crate::impls::RawValue for $type {
+                const TYPES: &'static [crate::enums::CtrlType] = &[ $(crate::enums::CtrlType::$ctrl_type,)* ];
+            }
+        )*
+    };
+}
+
 /*
 macro_rules! struct_impl {
 ($($(#[$($meta:meta)*])* $type:ident {

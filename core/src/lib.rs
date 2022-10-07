@@ -16,7 +16,7 @@ mod stdid;
 mod structs;
 mod utils;
 
-pub mod interface {
+pub mod types {
     pub use crate::{consts::*, ctrlid::*, enums::*, fourcc::*, impls::*, stdid::*, structs::*};
 }
 

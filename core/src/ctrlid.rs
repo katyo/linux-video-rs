@@ -2,7 +2,7 @@ use crate::enums::CtrlClass;
 
 enum_impl! {
     enum CtrlBase {
-        Base = 0x980900,
+        //Base = 0x980900,
         UserBase = 0x980900,
         CodecBase = 0x990900,
         CodecCx2341xBase = 0x991000,
@@ -465,5 +465,11 @@ impl CtrlId {
     /// Get class from identifier
     pub fn class(&self) -> CtrlClass {
         unsafe { core::mem::transmute(*self as u32 & 0x0fff0000) }
+    }
+}
+
+impl AsRef<u32> for CtrlId {
+    fn as_ref(&self) -> &u32 {
+        unsafe { &*(self as *const _ as *const _) }
     }
 }

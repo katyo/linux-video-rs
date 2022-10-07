@@ -1,4 +1,4 @@
-use crate::{calls, consts::*, interface::*, structs::*, utils, Internal, Result};
+use crate::{calls, consts::*, ctrlid::*, enums::*, structs::*, utils, Internal, Result};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use std::os::unix::io::RawFd;
 
@@ -428,25 +428,62 @@ impl core::fmt::Display for MenuItem {
     }
 }
 
+pub trait RawValue {
+    const TYPES: &'static [CtrlType];
+}
+
+pub trait RefValue<T> {
+    fn try_ref<'a>(data: &'a T, ctrl: &QueryExtCtrl) -> Option<&'a Self>;
+}
+
+pub trait MutValue<T> {
+    fn try_mut<'a>(data: &'a mut T, ctrl: &QueryExtCtrl) -> Option<&'a mut Self>;
+}
+
 /// Control value
-pub struct Value {
-    type_: CtrlType,
-    ctrl: Internal<ExtControl>,
+pub struct Value<C: AsRef<QueryExtCtrl>> {
+    ctrl: C,
+    data: Internal<ExtControl>,
 }
 
-impl From<&Internal<QueryExtCtrl>> for Internal<Value> {
-    fn from(ctrl: &Internal<QueryExtCtrl>) -> Self {
-        Self::new(ctrl.id, ctrl.type_, ctrl.size())
+impl<C: AsRef<QueryExtCtrl>> core::ops::Deref for Value<C> {
+    type Target = C;
+    fn deref(&self) -> &Self::Target {
+        &self.ctrl
     }
 }
 
-impl Internal<Value> {
-    pub fn new(id: u32, type_: CtrlType, size: u32) -> Self {
-        let ctrl = Internal::<ExtControl>::new(id, type_, size);
-
-        Self(Value { type_, ctrl })
+impl<C: AsRef<QueryExtCtrl>> Value<C> {
+    pub fn control(&self) -> &C {
+        &self.ctrl
     }
 
+    pub fn try_ref<T: RefValue<ExtControl>>(&self) -> Option<&T> {
+        T::try_ref(&self.data, self.ctrl.as_ref())
+    }
+
+    pub fn try_mut<T: MutValue<ExtControl>>(&mut self) -> Option<&mut T> {
+        T::try_mut(&mut self.data, self.ctrl.as_ref())
+    }
+}
+
+impl<C: AsRef<QueryExtCtrl>> Drop for Value<C> {
+    fn drop(&mut self) {
+        if self.ctrl.as_ref().has_payload() {
+            self.data.del();
+        }
+    }
+}
+
+impl<C: AsRef<QueryExtCtrl>> From<C> for Internal<Value<C>> {
+    fn from(ctrl: C) -> Self {
+        let data = Internal::<ExtControl>::new(ctrl.as_ref());
+
+        Self(Value { ctrl, data })
+    }
+}
+
+impl<C: AsRef<QueryExtCtrl>> Internal<Value<C>> {
     /// Get value from device
     pub fn get(&mut self, fd: RawFd) -> Result<()> {
         let ctrls = MaybeUninit::<ExtControls>::zeroed();
@@ -455,7 +492,7 @@ impl Internal<Value> {
             let mut ctrls = ctrls.assume_init();
 
             ctrls.count = 1;
-            ctrls.controls = self.ctrl.as_mut() as *mut _;
+            ctrls.controls = self.data.as_mut() as *mut _;
 
             calls::g_ext_ctrls(fd, &mut ctrls as *mut _)
         })?;
@@ -469,18 +506,18 @@ impl Internal<Value> {
     }
 }
 
-impl Internal<&Value> {
+impl<C: AsRef<QueryExtCtrl>> Internal<&Value<C>> {
     /// Set value to device
     pub fn set(&self, fd: RawFd) -> Result<()> {
-        let ctrls = MaybeUninit::<ExtControls>::zeroed();
+        let req = MaybeUninit::<ExtControls>::zeroed();
 
         unsafe_call!({
-            let mut ctrls = ctrls.assume_init();
+            let mut req = req.assume_init();
 
-            ctrls.count = 1;
-            ctrls.controls = self.ctrl.as_ref() as *const _ as *mut _;
+            req.count = 1;
+            req.controls = self.data.as_ref() as *const _ as *mut _;
 
-            calls::s_ext_ctrls(fd, &mut ctrls as *mut _)
+            calls::s_ext_ctrls(fd, &mut req as *mut _)
         })?;
 
         Ok(())
@@ -488,10 +525,11 @@ impl Internal<&Value> {
 }
 
 impl Internal<ExtControl> {
-    pub fn new(id: u32, type_: CtrlType, size: u32) -> Self {
-        let ctrl = MaybeUninit::<ExtControl>::zeroed();
+    pub fn new(ctrl: &QueryExtCtrl) -> Self {
+        let data = MaybeUninit::<ExtControl>::zeroed();
+        let size = ctrl.size();
 
-        let ptr = if type_.is_compound() {
+        let ptr = if ctrl.has_payload() {
             let mut data = Vec::<u8>::with_capacity(size as _);
             let ptr = data.as_mut_ptr();
             let _ = ManuallyDrop::new(data);
@@ -500,18 +538,18 @@ impl Internal<ExtControl> {
             core::ptr::null_mut()
         };
 
-        let ctrl = unsafe {
-            let mut ctrl = ctrl.assume_init();
+        let data = unsafe {
+            let mut data = data.assume_init();
 
-            ctrl.union_.ptr = ptr as _;
+            data.union_.ptr = ptr as _;
 
-            ctrl.id = id;
-            ctrl.size = size;
+            data.id = ctrl.id;
+            data.size = size;
 
-            ctrl
+            data
         };
 
-        Self(ctrl)
+        Self(data)
     }
 
     pub fn del(&mut self) {
@@ -522,102 +560,234 @@ impl Internal<ExtControl> {
     }
 }
 
-impl Drop for Value {
-    fn drop(&mut self) {
-        if self.type_.is_compound() {
-            self.ctrl.del();
+impl<T: RawValue> RefValue<ExtControl> for T {
+    fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
+        if T::TYPES.contains(&ctrl.type_) {
+            if ctrl.has_payload() {
+                if core::mem::size_of::<T>() as u32 <= data.size {
+                    return Some(unsafe { &*(data.union_.ptr as *const _) });
+                }
+            } else if core::mem::size_of::<T>() <= core::mem::size_of::<ExtControlUnion>() {
+                #[allow(unaligned_references)]
+                return Some(unsafe { &*(&data.union_.value as *const _ as *const _) });
+            }
+        }
+        None
+    }
+}
+
+impl<T: RawValue> MutValue<ExtControl> for T {
+    fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
+        if T::TYPES.contains(&ctrl.type_) {
+            if ctrl.has_payload() {
+                if core::mem::size_of::<T>() as u32 <= data.size {
+                    return Some(unsafe { &mut *(data.union_.ptr as *mut _) });
+                }
+            } else if core::mem::size_of::<T>() <= core::mem::size_of::<ExtControlUnion>() {
+                #[allow(unaligned_references)]
+                return Some(unsafe { &mut *(&mut data.union_.value as *mut _ as *mut _) });
+            }
+        }
+        None
+    }
+}
+
+impl<const N: usize, T: RawValue> RefValue<ExtControl> for [T; N] {
+    fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &*(data.union_.ptr as *const _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, T: RawValue> MutValue<ExtControl> for [T; N] {
+    fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &mut *(data.union_.ptr as *mut _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, const M: usize, T: RawValue> RefValue<ExtControl> for [[T; N]; M] {
+    fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &*(data.union_.ptr as *const _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, const M: usize, T: RawValue> MutValue<ExtControl> for [[T; N]; M] {
+    fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &mut *(data.union_.ptr as *mut _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, const M: usize, const L: usize, T: RawValue> RefValue<ExtControl>
+    for [[[T; N]; M]; L]
+{
+    fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &*(data.union_.ptr as *const _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, const M: usize, const L: usize, T: RawValue> MutValue<ExtControl>
+    for [[[T; N]; M]; L]
+{
+    fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &mut *(data.union_.ptr as *mut _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, const M: usize, const L: usize, const O: usize, T: RawValue>
+    RefValue<ExtControl> for [[[[T; N]; M]; L]; O]
+{
+    fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &*(data.union_.ptr as *const _) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize, const M: usize, const L: usize, const O: usize, T: RawValue>
+    MutValue<ExtControl> for [[[[T; N]; M]; L]; O]
+{
+    fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
+        if T::TYPES.contains(&ctrl.type_)
+            && ctrl.has_payload()
+            && core::mem::size_of::<Self>() as u32 <= data.size
+        {
+            Some(unsafe { &mut *(data.union_.ptr as *mut _) })
+        } else {
+            None
         }
     }
 }
 
 /// Control values
-pub struct Values {
-    ctrls: Internal<ExtControls>,
-    types: *const CtrlType,
+pub struct Values<C: AsRef<QueryExtCtrl>> {
+    ctrl: *const C,
+    data: Internal<ExtControls>,
 }
 
-impl<'i> FromIterator<&'i QueryExtCtrl> for Internal<Values> {
-    fn from_iter<T: IntoIterator<Item = &'i QueryExtCtrl>>(iter: T) -> Self {
+impl<C: AsRef<QueryExtCtrl>> FromIterator<C> for Internal<Values<C>> {
+    fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
         let mut ctrls = Vec::new();
-        let mut types = Vec::new();
+        let mut datas = Vec::new();
 
         for ctrl in iter {
-            ctrls.push(Internal::<ExtControl>::new(
-                ctrl.id,
-                ctrl.type_,
-                ctrl.size(),
-            ));
-            types.push(ctrl.type_);
+            datas.push(Internal::<ExtControl>::new(ctrl.as_ref()));
+            ctrls.push(ctrl);
         }
 
-        let xctrls = MaybeUninit::<ExtControls>::zeroed();
+        let data = MaybeUninit::<ExtControls>::zeroed();
 
-        let ctrls = unsafe {
-            let mut xctrls = xctrls.assume_init();
+        let data = unsafe {
+            let mut data = data.assume_init();
 
-            xctrls.count = ctrls.len() as _;
-            xctrls.controls = ctrls.as_mut_ptr() as _;
+            data.count = datas.len() as _;
+            data.controls = datas.as_mut_ptr() as _;
 
-            let _ = ManuallyDrop::new(ctrls);
+            let _ = ManuallyDrop::new(datas);
 
-            xctrls
+            data
         }
         .into();
 
-        let types = {
-            let ptr = types.as_ptr();
-            let _ = ManuallyDrop::new(types);
+        let ctrl = {
+            let ptr = ctrls.as_ptr();
+            let _ = ManuallyDrop::new(ctrls);
             ptr
         };
 
-        Self(Values { ctrls, types })
+        Self(Values { ctrl, data })
     }
 }
 
-impl Drop for Values {
+impl<C: AsRef<QueryExtCtrl>> Drop for Values<C> {
     fn drop(&mut self) {
         for index in 0..self.len() {
-            let type_ = unsafe { *self.types.add(index) };
-            let ctrl: &mut Internal<ExtControl> =
-                unsafe { &mut *(self.ctrls.controls.add(index) as *mut _) };
-            if type_.is_compound() {
-                Internal::from(ctrl).del();
+            let ctrl = unsafe { &*self.ctrl.add(index) };
+            let data: &mut Internal<ExtControl> =
+                unsafe { &mut *(self.data.controls.add(index) as *mut _) };
+            if ctrl.as_ref().has_payload() {
+                Internal::from(data).del();
             }
         }
     }
 }
 
-impl Values {
+impl<C: AsRef<QueryExtCtrl>> Values<C> {
     /// Number of values
     pub fn len(&self) -> usize {
-        self.ctrls.count as _
+        self.data.count as _
     }
 
     /// Check for empty
     pub fn is_empty(&self) -> bool {
-        self.ctrls.count < 1
+        self.data.count < 1
     }
 
-    /// Value types
-    pub fn types(&self) -> &[CtrlType] {
-        unsafe { core::slice::from_raw_parts(self.types, self.ctrls.count as _) }
+    /// Values controls
+    pub fn controls(&self) -> &[C] {
+        unsafe { core::slice::from_raw_parts(self.ctrl, self.data.count as _) }
     }
 
     /// Values
     pub fn values(&self) -> &[ExtControl] {
-        unsafe { core::slice::from_raw_parts(self.ctrls.controls, self.ctrls.count as _) }
+        unsafe { core::slice::from_raw_parts(self.data.controls, self.data.count as _) }
     }
 
     /// Mutable values
     pub fn values_mut(&mut self) -> &mut [ExtControl] {
-        unsafe { core::slice::from_raw_parts_mut(self.ctrls.controls, self.ctrls.count as _) }
+        unsafe { core::slice::from_raw_parts_mut(self.data.controls, self.data.count as _) }
     }
 }
 
-impl Internal<Values> {
+impl<C: AsRef<QueryExtCtrl>> Internal<Values<C>> {
     /// Get values from device
     pub fn get(&mut self, fd: RawFd) -> Result<()> {
-        unsafe_call!(calls::g_ext_ctrls(fd, self.ctrls.as_mut() as *mut _))?;
+        unsafe_call!(calls::g_ext_ctrls(fd, self.data.as_mut() as *mut _))?;
         Ok(())
     }
 
@@ -627,10 +797,10 @@ impl Internal<Values> {
     }
 }
 
-impl Internal<&mut Values> {
+impl<C: AsRef<QueryExtCtrl>> Internal<&mut Values<C>> {
     /// Set values to device
     pub fn set(&mut self, fd: RawFd) -> Result<()> {
-        unsafe_call!(calls::s_ext_ctrls(fd, self.ctrls.as_mut() as *mut _))?;
+        unsafe_call!(calls::s_ext_ctrls(fd, self.data.as_mut() as *mut _))?;
         Ok(())
     }
 }

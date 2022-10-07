@@ -21,5 +21,25 @@ fn main() -> Result<()> {
         }
     }
 
+    let contrast = dev.control(v4l2::types::CtrlId::Contrast)?;
+
+    println!("contrast control: {}", contrast);
+
+    let contrast = dev.control_get(contrast)?;
+
+    println!("contrast value: {:?}", contrast.try_ref::<i32>());
+
+    let mut contrast = contrast;
+
+    contrast.try_mut::<i32>().map(|val| *val = 42);
+
+    println!("contrast value: {:?}", contrast.try_ref::<i32>());
+
+    dev.control_set(&contrast)?;
+
+    contrast.try_mut::<i32>().map(|val| *val = 32);
+
+    dev.control_set(&contrast)?;
+
     Ok(())
 }

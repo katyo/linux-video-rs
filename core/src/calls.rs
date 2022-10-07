@@ -1,6 +1,6 @@
 use nix::{ioctl_none, ioctl_read, ioctl_readwrite, ioctl_write_ptr};
 
-use crate::interface::*;
+use crate::{enums::*, stdid::*, structs::*};
 
 const MAGIC: u8 = b'V';
 
