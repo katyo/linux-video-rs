@@ -83,31 +83,12 @@ macro_rules! enum_impl {
 macro_rules! value_impl {
     ($($type:ty: $($ctrl_type:ident)*,)*) => {
         $(
-            impl crate::impls::RawValue for $type {
-                const TYPES: &'static [crate::enums::CtrlType] = &[ $(crate::enums::CtrlType::$ctrl_type,)* ];
+            impl crate::traits::PlainData for $type {
+                const TYPES: &'static [crate::types::CtrlType] = &[ $(crate::types::CtrlType::$ctrl_type,)* ];
             }
         )*
     };
 }
-
-/*
-macro_rules! struct_impl {
-($($(#[$($meta:meta)*])* $type:ident {
-$($(#[$($field_meta:meta)*])* $field_name:ident: $field_type:ty,)*
-    })*) => {
-        $(#[$($meta:meta)*])*
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct $type {
-            $($(#[$($field_meta)*])* $field_name: $field_type,)*
-        }
-
-        impl $type {
-            $($(#[$($field_meta)*])* pub fn $field_name(&self) -> $field_type,)*
-        }
-    };
-}
-*/
 
 macro_rules! trivial_impls {
     ($($type:ty {

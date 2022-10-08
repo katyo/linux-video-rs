@@ -1,4 +1,4 @@
-use crate::{calls, consts::*, ctrlid::*, enums::*, structs::*, utils, Internal, Result};
+use crate::{calls, traits::*, types::*, utils, Internal, Result};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use std::os::unix::io::RawFd;
 
@@ -428,22 +428,18 @@ impl core::fmt::Display for MenuItem {
     }
 }
 
-pub trait RawValue {
-    const TYPES: &'static [CtrlType];
-}
-
-pub trait RefValue<T> {
-    fn try_ref<'a>(data: &'a T, ctrl: &QueryExtCtrl) -> Option<&'a Self>;
-}
-
-pub trait MutValue<T> {
-    fn try_mut<'a>(data: &'a mut T, ctrl: &QueryExtCtrl) -> Option<&'a mut Self>;
-}
-
 /// Control value
 pub struct Value<C: AsRef<QueryExtCtrl>> {
     ctrl: C,
     data: Internal<ExtControl>,
+}
+
+impl<C: AsRef<QueryExtCtrl>> From<C> for Value<C> {
+    fn from(ctrl: C) -> Self {
+        let data = Internal::<ExtControl>::new(ctrl.as_ref());
+
+        Self { ctrl, data }
+    }
 }
 
 impl<C: AsRef<QueryExtCtrl>> core::ops::Deref for Value<C> {
@@ -475,17 +471,9 @@ impl<C: AsRef<QueryExtCtrl>> Drop for Value<C> {
     }
 }
 
-impl<C: AsRef<QueryExtCtrl>> From<C> for Internal<Value<C>> {
-    fn from(ctrl: C) -> Self {
-        let data = Internal::<ExtControl>::new(ctrl.as_ref());
-
-        Self(Value { ctrl, data })
-    }
-}
-
-impl<C: AsRef<QueryExtCtrl>> Internal<Value<C>> {
+impl<C: AsRef<QueryExtCtrl>> GetValue for Value<C> {
     /// Get value from device
-    pub fn get(&mut self, fd: RawFd) -> Result<()> {
+    fn get(&mut self, fd: RawFd) -> Result<()> {
         let ctrls = MaybeUninit::<ExtControls>::zeroed();
 
         unsafe_call!({
@@ -499,16 +487,11 @@ impl<C: AsRef<QueryExtCtrl>> Internal<Value<C>> {
 
         Ok(())
     }
-
-    /// Set value to device
-    pub fn set(&self, fd: RawFd) -> Result<()> {
-        Internal::from(self.as_ref()).set(fd)
-    }
 }
 
-impl<C: AsRef<QueryExtCtrl>> Internal<&Value<C>> {
+impl<C: AsRef<QueryExtCtrl>> SetValue for Value<C> {
     /// Set value to device
-    pub fn set(&self, fd: RawFd) -> Result<()> {
+    fn set(&self, fd: RawFd) -> Result<()> {
         let req = MaybeUninit::<ExtControls>::zeroed();
 
         unsafe_call!({
@@ -560,7 +543,19 @@ impl Internal<ExtControl> {
     }
 }
 
-impl<T: RawValue> RefValue<ExtControl> for T {
+impl RefValue<ExtControl> for str {
+    fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
+        if matches!(ctrl.type_, CtrlType::String) && ctrl.has_payload() {
+            unsafe { core::ffi::CStr::from_ptr(data.union_.string as _) }
+                .to_str()
+                .ok()
+        } else {
+            None
+        }
+    }
+}
+
+impl<T: PlainData> RefValue<ExtControl> for T {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
         if T::TYPES.contains(&ctrl.type_) {
             if ctrl.has_payload() {
@@ -576,7 +571,7 @@ impl<T: RawValue> RefValue<ExtControl> for T {
     }
 }
 
-impl<T: RawValue> MutValue<ExtControl> for T {
+impl<T: PlainData> MutValue<ExtControl> for T {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
         if T::TYPES.contains(&ctrl.type_) {
             if ctrl.has_payload() {
@@ -592,7 +587,7 @@ impl<T: RawValue> MutValue<ExtControl> for T {
     }
 }
 
-impl<const N: usize, T: RawValue> RefValue<ExtControl> for [T; N] {
+impl<const N: usize, T: PlainData> RefValue<ExtControl> for [T; N] {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -605,7 +600,7 @@ impl<const N: usize, T: RawValue> RefValue<ExtControl> for [T; N] {
     }
 }
 
-impl<const N: usize, T: RawValue> MutValue<ExtControl> for [T; N] {
+impl<const N: usize, T: PlainData> MutValue<ExtControl> for [T; N] {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -618,7 +613,7 @@ impl<const N: usize, T: RawValue> MutValue<ExtControl> for [T; N] {
     }
 }
 
-impl<const N: usize, const M: usize, T: RawValue> RefValue<ExtControl> for [[T; N]; M] {
+impl<const N: usize, const M: usize, T: PlainData> RefValue<ExtControl> for [[T; N]; M] {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -631,7 +626,7 @@ impl<const N: usize, const M: usize, T: RawValue> RefValue<ExtControl> for [[T; 
     }
 }
 
-impl<const N: usize, const M: usize, T: RawValue> MutValue<ExtControl> for [[T; N]; M] {
+impl<const N: usize, const M: usize, T: PlainData> MutValue<ExtControl> for [[T; N]; M] {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -644,7 +639,7 @@ impl<const N: usize, const M: usize, T: RawValue> MutValue<ExtControl> for [[T; 
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, T: RawValue> RefValue<ExtControl>
+impl<const N: usize, const M: usize, const L: usize, T: PlainData> RefValue<ExtControl>
     for [[[T; N]; M]; L]
 {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
@@ -659,7 +654,7 @@ impl<const N: usize, const M: usize, const L: usize, T: RawValue> RefValue<ExtCo
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, T: RawValue> MutValue<ExtControl>
+impl<const N: usize, const M: usize, const L: usize, T: PlainData> MutValue<ExtControl>
     for [[[T; N]; M]; L]
 {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
@@ -674,7 +669,7 @@ impl<const N: usize, const M: usize, const L: usize, T: RawValue> MutValue<ExtCo
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, const O: usize, T: RawValue>
+impl<const N: usize, const M: usize, const L: usize, const O: usize, T: PlainData>
     RefValue<ExtControl> for [[[[T; N]; M]; L]; O]
 {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
@@ -689,7 +684,7 @@ impl<const N: usize, const M: usize, const L: usize, const O: usize, T: RawValue
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, const O: usize, T: RawValue>
+impl<const N: usize, const M: usize, const L: usize, const O: usize, T: PlainData>
     MutValue<ExtControl> for [[[[T; N]; M]; L]; O]
 {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
@@ -706,11 +701,11 @@ impl<const N: usize, const M: usize, const L: usize, const O: usize, T: RawValue
 
 /// Control values
 pub struct Values<C: AsRef<QueryExtCtrl>> {
-    ctrl: *const C,
-    data: Internal<ExtControls>,
+    ctrls: Vec<C>,
+    datas: Vec<Internal<ExtControl>>,
 }
 
-impl<C: AsRef<QueryExtCtrl>> FromIterator<C> for Internal<Values<C>> {
+impl<C: AsRef<QueryExtCtrl>> FromIterator<C> for Values<C> {
     fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
         let mut ctrls = Vec::new();
         let mut datas = Vec::new();
@@ -720,36 +715,15 @@ impl<C: AsRef<QueryExtCtrl>> FromIterator<C> for Internal<Values<C>> {
             ctrls.push(ctrl);
         }
 
-        let data = MaybeUninit::<ExtControls>::zeroed();
-
-        let data = unsafe {
-            let mut data = data.assume_init();
-
-            data.count = datas.len() as _;
-            data.controls = datas.as_mut_ptr() as _;
-
-            let _ = ManuallyDrop::new(datas);
-
-            data
-        }
-        .into();
-
-        let ctrl = {
-            let ptr = ctrls.as_ptr();
-            let _ = ManuallyDrop::new(ctrls);
-            ptr
-        };
-
-        Self(Values { ctrl, data })
+        Self { ctrls, datas }
     }
 }
 
 impl<C: AsRef<QueryExtCtrl>> Drop for Values<C> {
     fn drop(&mut self) {
         for index in 0..self.len() {
-            let ctrl = unsafe { &*self.ctrl.add(index) };
-            let data: &mut Internal<ExtControl> =
-                unsafe { &mut *(self.data.controls.add(index) as *mut _) };
+            let ctrl = &self.ctrls[index];
+            let data = &mut self.datas[index];
             if ctrl.as_ref().has_payload() {
                 Internal::from(data).del();
             }
@@ -760,47 +734,68 @@ impl<C: AsRef<QueryExtCtrl>> Drop for Values<C> {
 impl<C: AsRef<QueryExtCtrl>> Values<C> {
     /// Number of values
     pub fn len(&self) -> usize {
-        self.data.count as _
+        self.ctrls.len()
     }
 
     /// Check for empty
     pub fn is_empty(&self) -> bool {
-        self.data.count < 1
+        self.ctrls.is_empty()
     }
 
     /// Values controls
     pub fn controls(&self) -> &[C] {
-        unsafe { core::slice::from_raw_parts(self.ctrl, self.data.count as _) }
+        &self.ctrls
     }
 
-    /// Values
-    pub fn values(&self) -> &[ExtControl] {
-        unsafe { core::slice::from_raw_parts(self.data.controls, self.data.count as _) }
+    /// Get reference to value by index
+    pub fn try_ref<T: RefValue<ExtControl>>(&self, index: usize) -> Option<&T> {
+        if index < self.ctrls.len() {
+            T::try_ref(&self.datas[index], self.ctrls[index].as_ref())
+        } else {
+            None
+        }
     }
 
-    /// Mutable values
-    pub fn values_mut(&mut self) -> &mut [ExtControl] {
-        unsafe { core::slice::from_raw_parts_mut(self.data.controls, self.data.count as _) }
+    /// Get mutable reference to value by index
+    pub fn try_mut<T: MutValue<ExtControl>>(&mut self, index: usize) -> Option<&mut T> {
+        if index < self.ctrls.len() {
+            T::try_mut(&mut self.datas[index], self.ctrls[index].as_ref())
+        } else {
+            None
+        }
     }
 }
 
-impl<C: AsRef<QueryExtCtrl>> Internal<Values<C>> {
+impl<C: AsRef<QueryExtCtrl>> GetValue for Values<C> {
     /// Get values from device
-    pub fn get(&mut self, fd: RawFd) -> Result<()> {
-        unsafe_call!(calls::g_ext_ctrls(fd, self.data.as_mut() as *mut _))?;
+    fn get(&mut self, fd: RawFd) -> Result<()> {
+        let mut ctrls = MaybeUninit::<ExtControls>::zeroed();
+
+        unsafe {
+            let mut ctrls = ctrls.assume_init();
+
+            ctrls.count = self.ctrls.len() as _;
+            ctrls.controls = self.datas.as_mut_ptr() as _;
+        }
+
+        unsafe_call!(calls::g_ext_ctrls(fd, ctrls.as_mut_ptr()))?;
         Ok(())
     }
-
-    /// Set values to device
-    pub fn set(&mut self, fd: RawFd) -> Result<()> {
-        Internal(self.as_mut()).set(fd)
-    }
 }
 
-impl<C: AsRef<QueryExtCtrl>> Internal<&mut Values<C>> {
+impl<C: AsRef<QueryExtCtrl>> SetValue for Values<C> {
     /// Set values to device
-    pub fn set(&mut self, fd: RawFd) -> Result<()> {
-        unsafe_call!(calls::s_ext_ctrls(fd, self.data.as_mut() as *mut _))?;
+    fn set(&self, fd: RawFd) -> Result<()> {
+        let mut ctrls = MaybeUninit::<ExtControls>::zeroed();
+
+        unsafe {
+            let mut ctrls = ctrls.assume_init();
+
+            ctrls.count = self.ctrls.len() as _;
+            ctrls.controls = self.datas.as_ptr() as _;
+        }
+
+        unsafe_call!(calls::s_ext_ctrls(fd, ctrls.as_mut_ptr()))?;
         Ok(())
     }
 }

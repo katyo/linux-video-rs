@@ -1,5 +1,5 @@
-pub use v4l2_core::types;
-use v4l2_core::*;
+pub use v4l2_core as types;
+use v4l2_core::private::*;
 
 use types::*;
 
@@ -63,34 +63,13 @@ impl Device {
     }
 
     /// Get control value
-    pub fn control_get<C: AsRef<QueryExtCtrl>>(&self, control: C) -> Result<Value<C>> {
-        let mut value = Internal::<Value<C>>::from(control);
-
-        value.get(self.file.as_raw_fd())?;
-
-        Ok(value.into_inner())
+    pub fn control_get<T: GetValue>(&self, value: &mut T) -> Result<()> {
+        value.get(self.as_raw_fd())
     }
 
     /// Set control value
-    pub fn control_set<C: AsRef<QueryExtCtrl>>(&self, value: &Value<C>) -> Result<()> {
-        Internal::from(value).set(self.file.as_raw_fd())
-    }
-
-    /// Get control values
-    pub fn controls_get<C: AsRef<QueryExtCtrl>>(
-        &self,
-        controls: impl IntoIterator<Item = C>,
-    ) -> Result<Values<C>> {
-        let mut values: Internal<Values<C>> = controls.into_iter().collect();
-
-        values.get(self.file.as_raw_fd())?;
-
-        Ok(values.into_inner())
-    }
-
-    /// Set control values
-    pub fn controls_set<C: AsRef<QueryExtCtrl>>(&self, controls: &mut Values<C>) -> Result<()> {
-        Internal::from(controls).set(self.file.as_raw_fd())
+    pub fn control_set<T: SetValue>(&self, value: &T) -> Result<()> {
+        value.set(self.as_raw_fd())
     }
 }
 

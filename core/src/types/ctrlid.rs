@@ -1,4 +1,4 @@
-use crate::enums::CtrlClass;
+use super::CtrlClass;
 
 enum_impl! {
     enum CtrlBase {
