@@ -1,3 +1,4 @@
+#[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
 pub struct Internal<T>(pub T);
 
@@ -40,5 +41,11 @@ impl<T> AsRef<T> for Internal<T> {
 impl<T> AsMut<T> for Internal<T> {
     fn as_mut(&mut self) -> &mut T {
         &mut self.0
+    }
+}
+
+impl<T: core::fmt::Display> core::fmt::Display for Internal<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.0.fmt(f)
     }
 }

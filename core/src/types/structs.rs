@@ -1,4 +1,5 @@
 use super::*;
+use getset::{CopyGetters, Setters};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -400,50 +401,93 @@ pub struct Area {
 
 #[cfg(target_endian = "little")] // FIXME:
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, CopyGetters)]
 pub struct VersionTriple {
     pub(crate) reserved: u8,
+    #[getset(get_copy = "pub")]
     pub(crate) major: u8,
+    #[getset(get_copy = "pub")]
     pub(crate) minor: u8,
+    #[getset(get_copy = "pub")]
     pub(crate) patch: u8,
 }
 
 #[cfg(target_endian = "big")] // FIXME:
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, CopyGetters)]
 pub struct VersionTriple {
+    #[getset(get_copy = "pub")]
     pub(crate) patch: u8,
+    #[getset(get_copy = "pub")]
     pub(crate) minor: u8,
+    #[getset(get_copy = "pub")]
     pub(crate) major: u8,
     pub(crate) reserved: u8,
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct Capability {
     pub(crate) driver: [u8; 16],
     pub(crate) card: [u8; 32],
     pub(crate) bus_info: [u8; 32],
+    /// Get driver version
+    #[getset(get_copy = "pub")]
     pub(crate) version: VersionTriple,
+    /// Get capabilities
+    #[getset(get_copy = "pub")]
     pub(crate) capabilities: CapabilityFlag,
-    pub(crate) device_caps: CapabilityFlag,
+    /// Get device capabilities
+    #[getset(get_copy = "pub")]
+    pub(crate) device_capabilities: CapabilityFlag,
     pub(crate) reserved: [u32; 3],
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters, Setters)]
 pub struct PixFormat {
+    /// Width in pixels
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) width: u32,
+
+    /// Height in pixels
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) height: u32,
-    pub(crate) pixelformat: FourCc,
+
+    /// Pixel format
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) pixel_format: FourCc,
+
+    /// Field
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) field: Field,
-    pub(crate) bytesperline: u32,
-    pub(crate) sizeimage: u32,
-    pub(crate) colorspace: ColorSpace,
+
+    /// Bytes per line
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) bytes_per_line: u32,
+
+    /// Image size
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) size_image: u32,
+
+    /// Color space
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) color_space: ColorSpace,
+
     pub(crate) priv_: u32,
+
+    /// Pixel format flags
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) flags: PixFmtFlag,
+
     pub(crate) union_: PixFormatUnion,
+
+    /// Quantization
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) quantization: Quantization,
+
+    /// Transfer function
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) xfer_func: XferFunc,
 }
 
@@ -455,14 +499,30 @@ pub(crate) union PixFormatUnion {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct FmtDesc {
+    /// Format index
+    #[getset(get_copy = "pub")]
     pub(crate) index: u32,
+
+    /// Format type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: BufferType,
+
+    /// Format flags
+    #[getset(get_copy = "pub")]
     pub(crate) flags: FmtFlag,
+
     pub(crate) description: [u8; 32],
-    pub(crate) pixelformat: FourCc,
+
+    /// Pixel format
+    #[getset(get_copy = "pub")]
+    pub(crate) pixel_format: FourCc,
+
+    /// Media bus code
+    #[getset(get_copy = "pub")]
     pub(crate) mbus_code: u32,
+
     pub(crate) reserved: [u32; 3],
 }
 
@@ -891,34 +951,98 @@ pub(crate) union ExtControlsUnion {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct QueryCtrl {
+    /// Control identifier
+    #[getset(get_copy = "pub")]
     pub(crate) id: u32,
+
+    /// Control type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: CtrlType,
+
     pub(crate) name: [u8; 32],
-    pub(crate) minimum: i32,
-    pub(crate) maximum: i32,
+
+    /// Minimum value, inclusive
+    ///
+    /// This field gives a lower bound for the control.
+    #[getset(get_copy = "pub")]
+    pub(crate) min: i32,
+
+    /// Maximum value, inclusive
+    ///
+    /// This field gives an upper bound for the control
+    #[getset(get_copy = "pub")]
+    pub(crate) max: i32,
+
+    /// This field gives a step size for the control
+    #[getset(get_copy = "pub")]
     pub(crate) step: i32,
-    pub(crate) default_value: i32,
+
+    /// Default value of control
+    ///
+    /// The default value of a [CtrlType::Integer], [CtrlType::Boolean], [CtrlType::BitMask], [CtrlType::Menu] or [CtrlType::IntegerMenu] control. Not valid for other types of controls
+    #[getset(get_copy = "pub")]
+    pub(crate) default: i32,
+
+    /// Control flags
+    #[getset(get_copy = "pub")]
     pub(crate) flags: CtrlFlag,
+
     pub(crate) reserved: [u32; 2],
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct QueryExtCtrl {
+    /// Control identifier
+    #[getset(get_copy = "pub")]
     pub(crate) id: u32,
+
+    /// Control type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: CtrlType,
+
     pub(crate) name: [u8; 32],
-    pub(crate) minimum: i64,
-    pub(crate) maximum: i64,
+
+    /// Minimum value, inclusive
+    ///
+    /// This field gives a lower bound for the control.
+    #[getset(get_copy = "pub")]
+    pub(crate) min: i64,
+
+    /// Maximum value, inclusive
+    ///
+    /// This field gives an upper bound for the control
+    #[getset(get_copy = "pub")]
+    pub(crate) max: i64,
+
+    /// This field gives a step size for the control
+    #[getset(get_copy = "pub")]
     pub(crate) step: u64,
-    pub(crate) default_value: i64,
+
+    /// Default value of control
+    ///
+    /// The default value of a [CtrlType::Integer], [CtrlType::Boolean], [CtrlType::BitMask], [CtrlType::Menu] or [CtrlType::IntegerMenu] control. Not valid for other types of controls
+    #[getset(get_copy = "pub")]
+    pub(crate) default: i64,
+
+    /// Control flags
+    #[getset(get_copy = "pub")]
     pub(crate) flags: CtrlFlag,
+
+    /// The size of the value in bytes
+    #[getset(get_copy = "pub")]
     pub(crate) elem_size: u32,
+
+    /// The number of elements in the N-dimensional array
+    #[getset(get_copy = "pub")]
     pub(crate) elems: u32,
+
     pub(crate) nr_of_dims: u32,
+
     pub(crate) dims: [u32; CTRL_MAX_DIMS],
+
     pub(crate) reserved: [u32; 32],
 }
 
@@ -1103,7 +1227,7 @@ pub struct DecoderCmdUnionRaw {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct VbiFormat {
     pub(crate) sampling_rate: u32,
     pub(crate) offset: u32,
@@ -1217,50 +1341,102 @@ pub(crate) union MpegVbiFmtIvtvUnion {
     pub(crate) ITV0: MpegVbiITV0,
 }
 
+/// Per-plane format definition
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct PlanePixFormat {
-    pub(crate) sizeimage: u32,
-    pub(crate) bytesperline: u32,
+    /// Image size
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) size_image: u32,
+
+    /// Bytes per line
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) bytes_per_line: u32,
+
     pub(crate) reserved: [u16; 6],
 }
 
+/// Multiplanar format definition
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters, Setters)]
 pub struct PixFormatMplane {
+    /// Width in pixels
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) width: u32,
+
+    /// Height in pixels
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) height: u32,
-    pub(crate) pixelformat: FourCc,
+
+    /// Pixel format
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) pixel_format: FourCc,
+
+    /// Format field
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) field: Field,
-    pub(crate) colorspace: ColorSpace,
-    pub(crate) plane_fmt: [PlanePixFormat; 8],
+
+    /// Color space
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) color_space: ColorSpace,
+
+    pub(crate) plane_fmt: [PlanePixFormat; VIDEO_MAX_PLANES],
+
     pub(crate) num_planes: u8,
+
+    /// Pixel format flags
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) flags: PixFmtFlag,
+
     pub(crate) union_: PixFormatUnion,
+
+    /// Quantization
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) quantization: Quantization,
+
+    /// Transfer function
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) xfer_func: XferFunc,
+
     pub(crate) reserved: [u8; 7],
 }
 
+/// SDR format definition
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct SdrFormat {
-    pub(crate) pixelformat: FourCc,
-    pub(crate) buffersize: u32,
+    /// Pixel format
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) pixel_format: FourCc,
+
+    /// Buffer size
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) buffer_size: u32,
+
     pub(crate) reserved: [u8; 24],
 }
 
+/// Metadata format definition
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct MetaFormat {
-    pub(crate) dataformat: u32,
-    pub(crate) buffersize: u32,
+    /// Data format
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) data_format: FourCc,
+
+    /// Buffer size
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) buffer_size: u32,
 }
 
+/// Stream data format
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters)]
 pub struct Format {
-    pub(crate) type_: u32,
+    /// Buffer size
+    #[getset(get_copy = "pub")]
+    pub(crate) type_: BufferType,
+
     pub(crate) fmt: FormatUnion,
 }
 

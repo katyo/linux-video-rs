@@ -1,32 +1,41 @@
 macro_rules! enum_impl {
-    ($($(#[$($meta:meta)*])* $kind:ident $type:ident {
+    ($($(#[$($meta:meta)*])* $kind:ident $type:ident $(: $repr:ident)* {
         $($(#[$($var_meta:meta)*])*
           $var_name:ident $(= $var_data:expr)*,)*
     })*) => {
         $(
-            enum_impl!(@$kind $(#[$($meta)*])* $type {
+            enum_impl!(@$kind $(#[$($meta)*])* $type $(: $repr)* {
                 $($(#[$($var_meta)*])* $var_name $(= $var_data)*,)*
             });
         )*
     };
 
-    (@enum $(#[$($meta:meta)*])* $type:ident {
+    (@$kind:ident $(#[$($meta:meta)*])* $type:ident {
+        $($(#[$($var_meta:meta)*])*
+          $var_name:ident $(= $var_data:expr)*,)*
+    }) => {
+        enum_impl!(@$kind $(#[$($meta)*])* $type: u32 {
+            $($(#[$($var_meta)*])* $var_name $(= $var_data)*,)*
+        });
+    };
+
+    (@enum $(#[$($meta:meta)*])* $type:ident: $repr:ident {
         $($(#[$($var_meta:meta)*])*
           $var_name:ident $(= $var_data:expr)*,)*
     }) => {
         $(#[$($meta)*])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        #[repr(u32)]
+        #[repr($repr)]
         pub enum $type {
             $($(#[$($var_meta)*])* $var_name $(= $var_data)*,)*
         }
 
-        impl core::convert::TryFrom<u32> for $type {
-            type Error = u32;
+        impl core::convert::TryFrom<$repr> for $type {
+            type Error = $repr;
 
             #[allow(non_upper_case_globals)]
-            fn try_from(data: u32) -> core::result::Result<Self, Self::Error> {
-                $(pub const $var_name: u32 = $type::$var_name as _;)*
+            fn try_from(data: $repr) -> core::result::Result<Self, Self::Error> {
+                $(pub const $var_name: $repr = $type::$var_name as _;)*
 
                 Ok(match data {
                     $($var_name => Self::$var_name,)*
@@ -35,7 +44,7 @@ macro_rules! enum_impl {
             }
         }
 
-        impl From<$type> for u32 {
+        impl From<$type> for $repr {
             fn from(data: $type) -> Self {
                 data as _
             }
@@ -50,12 +59,12 @@ macro_rules! enum_impl {
         }
     };
 
-    (@mask $(#[$($meta:meta)*])* $type:ident {
+    (@mask $(#[$($meta:meta)*])* $type:ident: $repr:ident {
         $($(#[$($var_meta:meta)*])*
           $var_name:ident = $var_data:expr,)*
     }) => {
         $(#[$($meta)*])*
-        #[bitmask_enum::bitmask(u32)]
+        #[bitmask_enum::bitmask($repr)]
         pub enum $type {
             $($(#[$($var_meta)*])* $var_name = $var_data,)*
         }
@@ -103,6 +112,7 @@ macro_rules! trivial_impls {
         )*
     };
 
+    /*
     (@get $(#[$($entry_meta:meta)*])* $entry_name:ident: $entry_type:ty) => {
         $(#[$($entry_meta)*])*
         pub fn $entry_name(&self) -> $entry_type {
@@ -116,6 +126,7 @@ macro_rules! trivial_impls {
             self.$entry_field
         }
     };
+    */
 
     (@getstr $(#[$($entry_meta:meta)*])* $entry_name:ident: $entry_type:ty) => {
         $(#[$($entry_meta)*])*

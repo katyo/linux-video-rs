@@ -256,7 +256,7 @@ enum_impl! {
         NonCoherent = 1,
     }
 
-    mask PixFmtFlag {
+    mask PixFmtFlag: u8 {
         PremulAlpha = 0x1,
         SetCsc = 0x2,
     }
@@ -1054,7 +1054,7 @@ enum_impl! {
 
     /// Mapping of [XferFunc::Default] to actual transfer functions
     /// for the various colorspaces
-    enum XferFunc {
+    enum XferFunc: u8 {
         Default,
         F709,
         Srgb,
@@ -1067,7 +1067,7 @@ enum_impl! {
 
     /// Mapping of [YcbcrEncoding::Default] to actual encodings for the
     /// various colorspaces
-    enum YcbcrEncoding {
+    enum YcbcrEncoding: u8 {
         Default,
         E601,
         E709,
@@ -1079,7 +1079,7 @@ enum_impl! {
         Smpte240M,
     }
 
-    enum HsvEncoding {
+    enum HsvEncoding: u8 {
         E180 = 0x80,
         E256 = 0x81,
     }
@@ -1087,7 +1087,7 @@ enum_impl! {
     /// The default for R'G'B' quantization is always full range.
     /// For Y'CbCr the quantization is always limited range, except
     /// for [ColorSpace::Jpeg]: this is full range.
-    enum Quantization {
+    enum Quantization: u8 {
         Default,
         FullRange,
         LimRange,

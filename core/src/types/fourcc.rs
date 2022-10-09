@@ -5,6 +5,16 @@ macro_rules! fourcc_impl {
         pub enum FourCc {
             $($(#[$($meta)*])* $name = fourcc_impl!(@$($opt)*: $a $b $c $d),)*
         }
+
+        impl core::fmt::Display for FourCc {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                let raw = *self as u32;
+                (raw as u8 as char).fmt(f)?;
+                ((raw >> 8) as u8 as char).fmt(f)?;
+                ((raw >> 16) as u8 as char).fmt(f)?;
+                ((raw >> 24) as u8 as char).fmt(f)
+            }
+        }
     };
 
     (@: $a:literal $b:literal $c:literal $d:literal) => {

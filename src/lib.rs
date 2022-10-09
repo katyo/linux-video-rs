@@ -63,13 +63,39 @@ impl Device {
     }
 
     /// Get control value
-    pub fn control_get<T: GetValue>(&self, value: &mut T) -> Result<()> {
+    pub fn get_control<T: GetValue>(&self, value: &mut T) -> Result<()> {
         value.get(self.as_raw_fd())
     }
 
     /// Set control value
-    pub fn control_set<T: SetValue>(&self, value: &T) -> Result<()> {
+    pub fn set_control<T: SetValue>(&self, value: &T) -> Result<()> {
         value.set(self.as_raw_fd())
+    }
+
+    /// Get supported formats
+    pub fn formats(&self, type_: BufferType) -> FmtDescs {
+        FmtDescs {
+            device: self,
+            type_,
+            index: 0,
+        }
+    }
+
+    /// Get current format
+    pub fn format(&self, type_: BufferType) -> Result<Format> {
+        let mut fmt = Format::from(type_);
+        self.get_format(&mut fmt)?;
+        Ok(fmt)
+    }
+
+    /// Get current format
+    pub fn get_format(&self, fmt: &mut Format) -> Result<()> {
+        Internal::from(fmt).get(self.as_raw_fd())
+    }
+
+    /// Set current format
+    pub fn set_format(&self, fmt: &Format) -> Result<()> {
+        Internal::from(fmt).set(self.as_raw_fd())
     }
 }
 
@@ -154,3 +180,33 @@ impl<'i> Iterator for MenuItems<'i> {
 }
 
 impl<'i> core::iter::FusedIterator for MenuItems<'i> {}
+
+pub struct FmtDescs<'i> {
+    device: &'i Device,
+    type_: BufferType,
+    index: u32,
+}
+
+impl<'i> Iterator for FmtDescs<'i> {
+    type Item = Result<FmtDesc>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index == u32::MAX {
+            return None;
+        }
+
+        match Internal::<FmtDesc>::query(self.device.as_raw_fd(), self.index, self.type_) {
+            Ok(Some(desc)) => {
+                self.index += 1;
+                Some(Ok(desc.into_inner()))
+            }
+            Ok(None) => {
+                self.index = u32::MAX;
+                None
+            }
+            Err(error) => Some(Err(error)),
+        }
+    }
+}
+
+impl<'i> core::iter::FusedIterator for FmtDescs<'i> {}

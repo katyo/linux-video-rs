@@ -1,5 +1,5 @@
 use anyhow::Result;
-use v4l2::Device;
+use v4l2::{types::*, Device};
 
 fn main() -> Result<()> {
     let dev = Device::open("/dev/video0")?;
@@ -21,11 +21,23 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut contrast: v4l2::types::Value<_> = dev.control(v4l2::types::CtrlId::Contrast)?.into();
+    println!("Formats:");
+    for fmt in dev.formats(BufferType::VideoCapture) {
+        let fmt = fmt?;
+        println!("  {}", fmt);
+    }
+
+    let mut fmt = Format::from(BufferType::VideoCapture);
+    println!("  {}", fmt);
+
+    dev.get_format(&mut fmt)?;
+    println!("  {}", fmt);
+
+    let mut contrast: Value<_> = dev.control(CtrlId::Contrast)?.into();
 
     println!("contrast control: {}", &*contrast);
 
-    dev.control_get(&mut contrast)?;
+    dev.get_control(&mut contrast)?;
 
     println!("contrast value: {:?}", contrast.try_ref::<i32>());
 
@@ -35,11 +47,11 @@ fn main() -> Result<()> {
 
     println!("contrast value: {:?}", contrast.try_ref::<i32>());
 
-    dev.control_set(&contrast)?;
+    dev.set_control(&contrast)?;
 
     contrast.try_mut::<i32>().map(|val| *val = 32);
 
-    dev.control_set(&contrast)?;
+    dev.set_control(&contrast)?;
 
     Ok(())
 }
