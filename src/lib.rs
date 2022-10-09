@@ -34,16 +34,19 @@ impl Device {
     }
 
     /// Get controls
-    pub fn controls(&self) -> Controls<'_> {
+    pub fn controls(&self, class: Option<CtrlClass>) -> Controls<'_> {
+        let last_id = class.map(|c| c as _).unwrap_or_default();
+
         Controls {
             device: self,
-            last_id: 0,
+            class,
+            last_id,
         }
     }
 
     /// Get control by identifier
-    pub fn control(&self, id: impl AsRef<u32>) -> Result<Control> {
-        let ctrl = Internal::<QueryExtCtrl>::query_fallback(self.as_raw_fd(), *id.as_ref())?;
+    pub fn control(&self, id: impl Into<u32>) -> Result<Control> {
+        let ctrl = Internal::<QueryExtCtrl>::query_fallback(self.as_raw_fd(), id.into())?;
 
         Ok(Control { ctrl })
     }
@@ -97,10 +100,36 @@ impl Device {
     pub fn set_format(&self, fmt: &Format) -> Result<()> {
         Internal::from(fmt).set(self.as_raw_fd())
     }
+
+    /// Try format without set it
+    pub fn try_format(&self, fmt: &Format) -> Result<()> {
+        Internal::from(fmt).set(self.as_raw_fd())
+    }
+
+    /// Get supported frame sizes
+    pub fn sizes(&self, pixel_format: FourCc) -> FrmSizes {
+        FrmSizes {
+            device: self,
+            pixel_format,
+            index: 0,
+        }
+    }
+
+    /// Get supported frame intervals
+    pub fn intervals(&self, pixel_format: FourCc, width: u32, height: u32) -> FrmIvals {
+        FrmIvals {
+            device: self,
+            pixel_format,
+            width,
+            height,
+            index: 0,
+        }
+    }
 }
 
 pub struct Controls<'i> {
     device: &'i Device,
+    class: Option<CtrlClass>,
     last_id: u32,
 }
 
@@ -114,8 +143,17 @@ impl<'i> Iterator for Controls<'i> {
 
         match Internal::<QueryExtCtrl>::query_next_fallback(self.device.as_raw_fd(), self.last_id) {
             Ok(Some(ctrl)) => {
-                self.last_id = ctrl.id();
-                Some(Ok(Control { ctrl }))
+                if self
+                    .class
+                    .map(|class| class.fast_match(ctrl.id()))
+                    .unwrap_or(true)
+                {
+                    self.last_id = ctrl.id();
+                    Some(Ok(Control { ctrl }))
+                } else {
+                    self.last_id = u32::MAX;
+                    None
+                }
             }
             Ok(None) => {
                 self.last_id = u32::MAX;
@@ -210,3 +248,72 @@ impl<'i> Iterator for FmtDescs<'i> {
 }
 
 impl<'i> core::iter::FusedIterator for FmtDescs<'i> {}
+
+pub struct FrmSizes<'i> {
+    device: &'i Device,
+    pixel_format: FourCc,
+    index: u32,
+}
+
+impl<'i> Iterator for FrmSizes<'i> {
+    type Item = Result<FrmSizeEnum>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index == u32::MAX {
+            return None;
+        }
+
+        match Internal::<FrmSizeEnum>::query(self.device.as_raw_fd(), self.index, self.pixel_format)
+        {
+            Ok(Some(desc)) => {
+                self.index += 1;
+                Some(Ok(desc.into_inner()))
+            }
+            Ok(None) => {
+                self.index = u32::MAX;
+                None
+            }
+            Err(error) => Some(Err(error)),
+        }
+    }
+}
+
+impl<'i> core::iter::FusedIterator for FrmSizes<'i> {}
+
+pub struct FrmIvals<'i> {
+    device: &'i Device,
+    pixel_format: FourCc,
+    width: u32,
+    height: u32,
+    index: u32,
+}
+
+impl<'i> Iterator for FrmIvals<'i> {
+    type Item = Result<FrmIvalEnum>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index == u32::MAX {
+            return None;
+        }
+
+        match Internal::<FrmIvalEnum>::query(
+            self.device.as_raw_fd(),
+            self.index,
+            self.pixel_format,
+            self.width,
+            self.height,
+        ) {
+            Ok(Some(desc)) => {
+                self.index += 1;
+                Some(Ok(desc.into_inner()))
+            }
+            Ok(None) => {
+                self.index = u32::MAX;
+                None
+            }
+            Err(error) => Some(Err(error)),
+        }
+    }
+}
+
+impl<'i> core::iter::FusedIterator for FrmIvals<'i> {}

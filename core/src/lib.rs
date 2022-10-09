@@ -8,14 +8,12 @@ mod macros;
 
 mod calls;
 mod impls;
-mod traits;
 mod types;
 mod utils;
 
 pub mod private;
 
 pub use impls::*;
-pub use traits::*;
 pub use types::*;
 
 use private::*;

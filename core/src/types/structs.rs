@@ -376,52 +376,90 @@ pub struct Vp9CompressedHdr {
     pub(crate) mv: Vp9MvProbs,
 }
 
+/// Rectangle data
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct Rect {
+    /// Left coordinate (X)
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) left: i32,
+
+    /// Top coordinate (Y)
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) top: i32,
+
+    /// Width size
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) width: u32,
+
+    /// Height size
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) height: u32,
 }
 
+/// Fraction value
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct Fract {
+    /// Numerator
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) numerator: u32,
+
+    /// Denominator
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) denominator: u32,
 }
 
+/// Area data
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct Area {
+    /// Width size
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) width: u32,
+
+    /// Height size
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) height: u32,
 }
 
+/// Version numbers
 #[cfg(target_endian = "little")] // FIXME:
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, CopyGetters)]
 pub struct VersionTriple {
     pub(crate) reserved: u8,
+
+    /// Major version number
     #[getset(get_copy = "pub")]
     pub(crate) major: u8,
+
+    /// Minor version number
     #[getset(get_copy = "pub")]
     pub(crate) minor: u8,
+
+    /// Patch version number
     #[getset(get_copy = "pub")]
     pub(crate) patch: u8,
 }
 
+/// Version numbers
 #[cfg(target_endian = "big")] // FIXME:
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, CopyGetters)]
 pub struct VersionTriple {
+    /// Patch version number
     #[getset(get_copy = "pub")]
     pub(crate) patch: u8,
+
+    /// Minor version number
     #[getset(get_copy = "pub")]
     pub(crate) minor: u8,
+
+    /// Major version number
     #[getset(get_copy = "pub")]
     pub(crate) major: u8,
+
     pub(crate) reserved: u8,
 }
 
@@ -443,6 +481,7 @@ pub struct Capability {
     pub(crate) reserved: [u32; 3],
 }
 
+/// Pixel format
 #[repr(C)]
 #[derive(Copy, Clone, CopyGetters, Setters)]
 pub struct PixFormat {
@@ -498,6 +537,7 @@ pub(crate) union PixFormatUnion {
     pub(crate) hsv_enc: HsvEncoding,
 }
 
+/// Format description
 #[repr(C)]
 #[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct FmtDesc {
@@ -526,33 +566,73 @@ pub struct FmtDesc {
     pub(crate) reserved: [u32; 3],
 }
 
+/*
+/// Discrete frame size
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct FrmSizeDiscrete {
+    /// Frame width in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) width: u32,
+
+    /// Frame height in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) height: u32,
 }
+*/
 
+pub type FrmSizeDiscrete = Area;
+
+/// Stepwise frame sizes
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct FrmSizeStepwise {
+    /// Minimum width in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) min_width: u32,
+
+    /// Maximum width in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) max_width: u32,
+
+    /// Width step in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) step_width: u32,
+
+    /// Minimum height in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) min_height: u32,
+
+    /// Maximum height in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) max_height: u32,
+
+    /// Height step in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) step_height: u32,
 }
 
+/// Frame size description
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters)]
 pub struct FrmSizeEnum {
+    /// Frame size index
+    #[getset(get_copy = "pub")]
     pub(crate) index: u32,
-    pub(crate) pixel_format: u32,
+
+    /// Requested pixel format
+    #[getset(get_copy = "pub")]
+    pub(crate) pixel_format: FourCc,
+
+    /// Frame size type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: FrmSizeType,
+
     pub(crate) union_: FrmSizeEnumUnion,
+
     pub(crate) reserved: [u32; 2],
 }
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub(crate) union FrmSizeEnumUnion {
@@ -560,33 +640,62 @@ pub(crate) union FrmSizeEnumUnion {
     pub(crate) stepwise: FrmSizeStepwise,
 }
 
+/// Stepwise frame interval
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters)]
 pub struct FrmIvalStepwise {
+    /// Minimum frame interval
+    #[getset(get_copy = "pub")]
     pub(crate) min: Fract,
+
+    /// Maximum frame interval
+    #[getset(get_copy = "pub")]
     pub(crate) max: Fract,
+
+    /// Frame interval step
+    #[getset(get_copy = "pub")]
     pub(crate) step: Fract,
 }
 
+/// Frame interval description
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters)]
 pub struct FrmIvalEnum {
+    /// Frame inteval index
+    #[getset(get_copy = "pub")]
     pub(crate) index: u32,
-    pub(crate) pixel_format: u32,
+
+    /// Requested pixel format
+    #[getset(get_copy = "pub")]
+    pub(crate) pixel_format: FourCc,
+
+    /// Requested width in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) width: u32,
+
+    /// Requested height in pixels
+    #[getset(get_copy = "pub")]
     pub(crate) height: u32,
+
+    /// Frame interval type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: FrmIvalType,
+
     pub(crate) union_: FrmIvalEnumUnion,
+
     pub(crate) reserved: [u32; 2],
 }
+
+pub type FrmIvalDiscrete = Fract;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub(crate) union FrmIvalEnumUnion {
-    pub(crate) discrete: Fract,
+    pub(crate) discrete: FrmIvalDiscrete,
     pub(crate) stepwise: FrmIvalStepwise,
 }
 
+/// Time code
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct TimeCode {
@@ -1588,30 +1697,4 @@ pub struct CreateBuffers {
     pub(crate) capabilities: BufferCapabilityFlag,
     pub(crate) flags: BufferFlag,
     pub(crate) reserved: [u32; 6],
-}
-
-value_impl! {
-    i32: Integer,
-    bool: Boolean,
-    i64: Integer64,
-    CtrlClass: CtrlClass,
-    u8: U8 BitMask Menu IntegerMenu,
-    u16: U16 BitMask Menu IntegerMenu,
-    u32: U32 BitMask Menu IntegerMenu,
-    Area: Area,
-    Hdr10CllInfo: Hdr10CllInfo,
-    Hdr10MasteringDisplay: Hdr10MasteringDisplay,
-    H264Sps: H264Sps,
-    H264Pps: H264Pps,
-    H264ScalingMatrix: H264ScalingMatrix,
-    H264SliceParams: H264SliceParams,
-    H264DecodeParams: H264DecodeParams,
-    H264PredWeights: H264PredWeights,
-    FwhtParams: FwhtParams,
-    //Vp8Params: Vp8Params,
-    Mpeg2Quantisation: Mpeg2Quantisation,
-    Mpeg2Sequence: Mpeg2Sequence,
-    Mpeg2Picture: Mpeg2Picture,
-    Vp9CompressedHdr: Vp9CompressedHdr,
-    Vp9Frame: Vp9Frame,
 }

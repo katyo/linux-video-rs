@@ -9,7 +9,7 @@ fn main() -> Result<()> {
     println!("Capabilities: {}", caps);
 
     println!("Controls:");
-    for ctrl in dev.controls() {
+    for ctrl in dev.controls(None) {
         let ctrl = ctrl?;
         println!("  {}", ctrl);
 
@@ -25,6 +25,19 @@ fn main() -> Result<()> {
     for fmt in dev.formats(BufferType::VideoCapture) {
         let fmt = fmt?;
         println!("  {}", fmt);
+
+        for size in dev.sizes(fmt.pixel_format()) {
+            let size = size?;
+            println!("    {}", size);
+
+            for size in size.sizes() {
+                println!("      {}", size);
+                for interval in dev.intervals(fmt.pixel_format(), size.width(), size.height()) {
+                    let interval = interval?;
+                    println!("        {}", interval);
+                }
+            }
+        }
     }
 
     let mut fmt = Format::from(BufferType::VideoCapture);

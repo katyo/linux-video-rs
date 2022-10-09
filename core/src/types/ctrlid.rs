@@ -463,13 +463,21 @@ enum_impl! {
 
 impl CtrlId {
     /// Get class from identifier
-    pub fn class(&self) -> CtrlClass {
-        unsafe { core::mem::transmute(*self as u32 & 0x0fff0000) }
+    pub fn class(self) -> CtrlClass {
+        self.into()
     }
 }
 
-impl AsRef<u32> for CtrlId {
-    fn as_ref(&self) -> &u32 {
-        unsafe { &*(self as *const _ as *const _) }
+impl CtrlClass {
+    const CLASS_MASK: u32 = 0x0fff0000;
+
+    pub fn fast_match(self, id: impl Into<u32>) -> bool {
+        self as u32 == id.into() & Self::CLASS_MASK
+    }
+}
+
+impl From<CtrlId> for CtrlClass {
+    fn from(id: CtrlId) -> CtrlClass {
+        unsafe { core::mem::transmute(id as u32 & Self::CLASS_MASK) }
     }
 }

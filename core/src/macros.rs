@@ -50,6 +50,12 @@ macro_rules! enum_impl {
             }
         }
 
+        impl AsRef<$repr> for $type {
+            fn as_ref(&self) -> &$repr {
+                unsafe { &*(self as *const _ as *const _) }
+            }
+        }
+
         impl core::fmt::Display for $type {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 match self {
@@ -86,16 +92,6 @@ macro_rules! enum_impl {
                 Ok(())
             }
         }
-    };
-}
-
-macro_rules! value_impl {
-    ($($type:ty: $($ctrl_type:ident)*,)*) => {
-        $(
-            impl crate::traits::PlainData for $type {
-                const TYPES: &'static [crate::types::CtrlType] = &[ $(crate::types::CtrlType::$ctrl_type,)* ];
-            }
-        )*
     };
 }
 

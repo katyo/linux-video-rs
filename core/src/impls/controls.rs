@@ -1,4 +1,4 @@
-use crate::{calls, traits::*, types::*, Internal, Result};
+use crate::{calls, types::*, Internal, Result};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use std::os::unix::io::RawFd;
 
@@ -129,7 +129,69 @@ impl RefValue<ExtControl> for str {
     }
 }
 
-impl<T: PlainData> RefValue<ExtControl> for T {
+/// Plain control value types
+pub trait IsPlainCtrlData {
+    /// Control types
+    const TYPES: &'static [CtrlType];
+}
+
+macro_rules! value_impl {
+    ($($type:ty: $($ctrl_type:ident)*,)*) => {
+        $(
+            impl IsPlainCtrlData for $type {
+                const TYPES: &'static [CtrlType] = &[ $(CtrlType::$ctrl_type,)* ];
+            }
+        )*
+    };
+}
+
+value_impl! {
+    i32: Integer,
+    bool: Boolean,
+    i64: Integer64,
+    CtrlClass: CtrlClass,
+    u8: U8 BitMask Menu IntegerMenu,
+    u16: U16 BitMask Menu IntegerMenu,
+    u32: U32 BitMask Menu IntegerMenu,
+    Area: Area,
+    Hdr10CllInfo: Hdr10CllInfo,
+    Hdr10MasteringDisplay: Hdr10MasteringDisplay,
+    H264Sps: H264Sps,
+    H264Pps: H264Pps,
+    H264ScalingMatrix: H264ScalingMatrix,
+    H264SliceParams: H264SliceParams,
+    H264DecodeParams: H264DecodeParams,
+    H264PredWeights: H264PredWeights,
+    FwhtParams: FwhtParams,
+    //Vp8Params: Vp8Params,
+    Mpeg2Quantisation: Mpeg2Quantisation,
+    Mpeg2Sequence: Mpeg2Sequence,
+    Mpeg2Picture: Mpeg2Picture,
+    Vp9CompressedHdr: Vp9CompressedHdr,
+    Vp9Frame: Vp9Frame,
+}
+
+pub trait RefValue<T> {
+    /// Get reference to value
+    fn try_ref<'a>(data: &'a T, ctrl: &QueryExtCtrl) -> Option<&'a Self>;
+}
+
+pub trait MutValue<T> {
+    /// Get mutable reference to value
+    fn try_mut<'a>(data: &'a mut T, ctrl: &QueryExtCtrl) -> Option<&'a mut Self>;
+}
+
+pub trait GetValue {
+    /// Get value from device
+    fn get(&mut self, fd: RawFd) -> Result<()>;
+}
+
+pub trait SetValue {
+    /// Set value to device
+    fn set(&self, fd: RawFd) -> Result<()>;
+}
+
+impl<T: IsPlainCtrlData> RefValue<ExtControl> for T {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
         if T::TYPES.contains(&ctrl.type_) {
             if ctrl.has_payload() {
@@ -145,7 +207,7 @@ impl<T: PlainData> RefValue<ExtControl> for T {
     }
 }
 
-impl<T: PlainData> MutValue<ExtControl> for T {
+impl<T: IsPlainCtrlData> MutValue<ExtControl> for T {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
         if T::TYPES.contains(&ctrl.type_) {
             if ctrl.has_payload() {
@@ -161,7 +223,7 @@ impl<T: PlainData> MutValue<ExtControl> for T {
     }
 }
 
-impl<const N: usize, T: PlainData> RefValue<ExtControl> for [T; N] {
+impl<const N: usize, T: IsPlainCtrlData> RefValue<ExtControl> for [T; N] {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -174,7 +236,7 @@ impl<const N: usize, T: PlainData> RefValue<ExtControl> for [T; N] {
     }
 }
 
-impl<const N: usize, T: PlainData> MutValue<ExtControl> for [T; N] {
+impl<const N: usize, T: IsPlainCtrlData> MutValue<ExtControl> for [T; N] {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -187,7 +249,7 @@ impl<const N: usize, T: PlainData> MutValue<ExtControl> for [T; N] {
     }
 }
 
-impl<const N: usize, const M: usize, T: PlainData> RefValue<ExtControl> for [[T; N]; M] {
+impl<const N: usize, const M: usize, T: IsPlainCtrlData> RefValue<ExtControl> for [[T; N]; M] {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -200,7 +262,7 @@ impl<const N: usize, const M: usize, T: PlainData> RefValue<ExtControl> for [[T;
     }
 }
 
-impl<const N: usize, const M: usize, T: PlainData> MutValue<ExtControl> for [[T; N]; M] {
+impl<const N: usize, const M: usize, T: IsPlainCtrlData> MutValue<ExtControl> for [[T; N]; M] {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
         if T::TYPES.contains(&ctrl.type_)
             && ctrl.has_payload()
@@ -213,7 +275,7 @@ impl<const N: usize, const M: usize, T: PlainData> MutValue<ExtControl> for [[T;
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, T: PlainData> RefValue<ExtControl>
+impl<const N: usize, const M: usize, const L: usize, T: IsPlainCtrlData> RefValue<ExtControl>
     for [[[T; N]; M]; L]
 {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
@@ -228,7 +290,7 @@ impl<const N: usize, const M: usize, const L: usize, T: PlainData> RefValue<ExtC
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, T: PlainData> MutValue<ExtControl>
+impl<const N: usize, const M: usize, const L: usize, T: IsPlainCtrlData> MutValue<ExtControl>
     for [[[T; N]; M]; L]
 {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
@@ -243,7 +305,7 @@ impl<const N: usize, const M: usize, const L: usize, T: PlainData> MutValue<ExtC
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, const O: usize, T: PlainData>
+impl<const N: usize, const M: usize, const L: usize, const O: usize, T: IsPlainCtrlData>
     RefValue<ExtControl> for [[[[T; N]; M]; L]; O]
 {
     fn try_ref<'a>(data: &'a ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a Self> {
@@ -258,7 +320,7 @@ impl<const N: usize, const M: usize, const L: usize, const O: usize, T: PlainDat
     }
 }
 
-impl<const N: usize, const M: usize, const L: usize, const O: usize, T: PlainData>
+impl<const N: usize, const M: usize, const L: usize, const O: usize, T: IsPlainCtrlData>
     MutValue<ExtControl> for [[[[T; N]; M]; L]; O]
 {
     fn try_mut<'a>(data: &'a mut ExtControl, ctrl: &QueryExtCtrl) -> Option<&'a mut Self> {
