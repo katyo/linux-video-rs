@@ -26,9 +26,12 @@ impl core::fmt::Display for VersionTriple {
 impl Internal<Capability> {
     /// Query capabilities from file descriptor
     pub fn query(fd: RawFd) -> Result<Self> {
-        let mut cap = MaybeUninit::zeroed();
+        let cap = MaybeUninit::zeroed();
 
-        let cap = unsafe_call!(calls::query_cap(fd, cap.as_mut_ptr()).map(|_| cap.assume_init()))?;
+        let cap = unsafe_call!({
+            let mut cap = cap.assume_init();
+            calls::query_cap(fd, &mut cap).map(|_| cap)
+        })?;
 
         utils::check_str(&cap.driver)?;
         utils::check_str(&cap.card)?;

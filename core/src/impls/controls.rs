@@ -405,33 +405,31 @@ impl<C: AsRef<QueryExtCtrl>> Values<C> {
 impl<C: AsRef<QueryExtCtrl>> GetValue for Values<C> {
     /// Get values from device
     fn get(&mut self, fd: RawFd) -> Result<()> {
-        let mut ctrls = MaybeUninit::<ExtControls>::zeroed();
+        let ctrls = MaybeUninit::<ExtControls>::zeroed();
 
-        unsafe {
+        unsafe_call!({
             let mut ctrls = ctrls.assume_init();
 
             ctrls.count = self.ctrls.len() as _;
             ctrls.controls = self.datas.as_mut_ptr() as _;
-        }
 
-        unsafe_call!(calls::g_ext_ctrls(fd, ctrls.as_mut_ptr()))?;
-        Ok(())
+            calls::g_ext_ctrls(fd, &mut ctrls).map(|_| ())
+        })
     }
 }
 
 impl<C: AsRef<QueryExtCtrl>> SetValue for Values<C> {
     /// Set values to device
     fn set(&self, fd: RawFd) -> Result<()> {
-        let mut ctrls = MaybeUninit::<ExtControls>::zeroed();
+        let ctrls = MaybeUninit::<ExtControls>::zeroed();
 
-        unsafe {
+        unsafe_call!({
             let mut ctrls = ctrls.assume_init();
 
             ctrls.count = self.ctrls.len() as _;
             ctrls.controls = self.datas.as_ptr() as _;
-        }
 
-        unsafe_call!(calls::s_ext_ctrls(fd, ctrls.as_mut_ptr()))?;
-        Ok(())
+            calls::s_ext_ctrls(fd, &mut ctrls).map(|_| ())
+        })
     }
 }

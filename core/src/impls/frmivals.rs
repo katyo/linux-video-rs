@@ -21,20 +21,17 @@ impl Internal<FrmIvalEnum> {
         width: u32,
         height: u32,
     ) -> Result<Option<Self>> {
-        let mut q = MaybeUninit::<FrmIvalEnum>::zeroed();
+        let frm_ival = MaybeUninit::<FrmIvalEnum>::zeroed();
 
         unsafe_call!({
-            {
-                let q = q.assume_init_mut();
-
-                q.index = index;
-                q.pixel_format = pixel_format;
-                q.width = width;
-                q.height = height;
-            }
-            calls::enum_frame_intervals(fd, q.as_mut_ptr()).map(|_| q.assume_init())
+            let mut frm_ival = frm_ival.assume_init();
+            frm_ival.index = index;
+            frm_ival.pixel_format = pixel_format;
+            frm_ival.width = width;
+            frm_ival.height = height;
+            calls::enum_frame_intervals(fd, &mut frm_ival).map(|_| frm_ival)
         })
-        .map(|q| Some(q.into()))
+        .map(|frm_ival| Some(frm_ival.into()))
         .or_else(|error| {
             if error.kind() == std::io::ErrorKind::InvalidInput {
                 Ok(None)

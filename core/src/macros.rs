@@ -50,9 +50,17 @@ macro_rules! enum_impl {
             }
         }
 
+        impl core::ops::Deref for $type {
+            type Target = $repr;
+
+            fn deref(&self) -> &Self::Target {
+                unsafe { &*(self as *const $type as *const $repr) }
+            }
+        }
+
         impl AsRef<$repr> for $type {
             fn as_ref(&self) -> &$repr {
-                unsafe { &*(self as *const _ as *const _) }
+                unsafe { &*(self as *const $type as *const $repr) }
             }
         }
 

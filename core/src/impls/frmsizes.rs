@@ -77,18 +77,15 @@ impl FrmSizeStepwise {
 
 impl Internal<FrmSizeEnum> {
     pub fn query(fd: RawFd, index: u32, pixel_format: FourCc) -> Result<Option<Self>> {
-        let mut q = MaybeUninit::<FrmSizeEnum>::zeroed();
+        let frm_size = MaybeUninit::<FrmSizeEnum>::zeroed();
 
         unsafe_call!({
-            {
-                let q = q.assume_init_mut();
-
-                q.index = index;
-                q.pixel_format = pixel_format;
-            }
-            calls::enum_frame_sizes(fd, q.as_mut_ptr()).map(|_| q.assume_init())
+            let mut frm_size = frm_size.assume_init();
+            frm_size.index = index;
+            frm_size.pixel_format = pixel_format;
+            calls::enum_frame_sizes(fd, &mut frm_size).map(|_| frm_size)
         })
-        .map(|q| Some(q.into()))
+        .map(|frm_size| Some(frm_size.into()))
         .or_else(|error| {
             if error.kind() == std::io::ErrorKind::InvalidInput {
                 Ok(None)

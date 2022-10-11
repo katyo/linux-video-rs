@@ -566,21 +566,7 @@ pub struct FmtDesc {
     pub(crate) reserved: [u32; 3],
 }
 
-/*
 /// Discrete frame size
-#[repr(C)]
-#[derive(Debug, Copy, Clone, CopyGetters)]
-pub struct FrmSizeDiscrete {
-    /// Frame width in pixels
-    #[getset(get_copy = "pub")]
-    pub(crate) width: u32,
-
-    /// Frame height in pixels
-    #[getset(get_copy = "pub")]
-    pub(crate) height: u32,
-}
-*/
-
 pub type FrmSizeDiscrete = Area;
 
 /// Stepwise frame sizes
@@ -640,6 +626,9 @@ pub(crate) union FrmSizeEnumUnion {
     pub(crate) stepwise: FrmSizeStepwise,
 }
 
+/// Discrete frame interval
+pub type FrmIvalDiscrete = Fract;
+
 /// Stepwise frame interval
 #[repr(C)]
 #[derive(Debug, Copy, Clone, CopyGetters)]
@@ -686,8 +675,6 @@ pub struct FrmIvalEnum {
     pub(crate) reserved: [u32; 2],
 }
 
-pub type FrmIvalDiscrete = Fract;
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub(crate) union FrmIvalEnumUnion {
@@ -725,7 +712,7 @@ pub struct JpegCompression {
 pub struct RequestBuffers {
     pub(crate) count: u32,
     pub(crate) type_: BufferType,
-    pub(crate) memory: u32,
+    pub(crate) memory: Memory,
     pub(crate) capabilities: BufferCapabilityFlag,
     pub(crate) flags: u8,
     pub(crate) reserved: [u8; 3],
@@ -750,20 +737,52 @@ pub(crate) union PlaneUnion {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters)]
 pub struct Buffer {
+    /// Buffer index
+    #[get_copy = "pub"]
     pub(crate) index: u32,
+
+    /// Buffer type
+    #[get_copy = "pub"]
     pub(crate) type_: BufferType,
-    pub(crate) bytesused: u32,
+
+    /// Number of bytes in use
+    #[get_copy = "pub"]
+    pub(crate) bytes_used: u32,
+
+    /// Buffer flags
+    #[get_copy = "pub"]
     pub(crate) flags: BufferFlag,
+
+    /// Buffer field
+    #[get_copy = "pub"]
     pub(crate) field: Field,
+
+    /// Buffer time
+    #[get_copy = "pub"]
     pub(crate) timestamp: TimeVal,
+
+    /// Buffer time code
+    #[get_copy = "pub"]
     pub(crate) timecode: TimeCode,
+
+    /// Buffer sequence
+    #[get_copy = "pub"]
     pub(crate) sequence: u32,
-    pub(crate) memory: u32,
+
+    /// Buffer memory
+    #[get_copy = "pub"]
+    pub(crate) memory: Memory,
+
     pub(crate) m: BufferM,
+
+    /// Buffer capacity in bytes
+    #[get_copy = "pub"]
     pub(crate) length: u32,
+
     pub(crate) reserved2: u32,
+
     pub(crate) union_: BufferUnion,
 }
 

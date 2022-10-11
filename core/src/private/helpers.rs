@@ -1,7 +1,7 @@
 use crate::Result;
 use std::{
     fs::{File, OpenOptions},
-    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::{FileTypeExt, OpenOptionsExt},
     path::Path,
 };
 
@@ -18,6 +18,10 @@ pub fn open(path: impl AsRef<Path>, nonblock: bool) -> Result<File> {
         full_path = Some(Path::new("dev").join(path));
         full_path.as_ref().unwrap()
     };
+
+    if !path.metadata()?.file_type().is_char_device() {
+        return Err(crate::utils::invalid_input("No character device"));
+    }
 
     pub const O_NONBLOCK: i32 = 2048;
 

@@ -1,3 +1,4 @@
+mod buffer;
 mod capability;
 mod control;
 mod controls;
@@ -7,6 +8,7 @@ mod frmivals;
 mod frmsizes;
 mod types;
 
+pub use buffer::*;
 pub use capability::*;
 pub use control::*;
 pub use controls::*;

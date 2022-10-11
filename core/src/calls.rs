@@ -71,8 +71,8 @@ ioctl_readwrite!(try_encoder_cmd, MAGIC, 78, EncoderCmd);
  * Only implemented if CONFIG_VIDEO_ADV_DEBUG is defined.
  * You must be root to use these ioctls. Never use these in applications!
  */
-ioctl_write_ptr!(dbg_s_register, MAGIC, 79, DbgRegister);
-ioctl_readwrite!(dbg_g_register, MAGIC, 80, DbgRegister);
+//ioctl_write_ptr!(dbg_s_register, MAGIC, 79, DbgRegister);
+//ioctl_readwrite!(dbg_g_register, MAGIC, 80, DbgRegister);
 
 ioctl_write_ptr!(s_hw_freq_seek, MAGIC, 82, HwFreqSeek);
 ioctl_readwrite!(s_dv_timings, MAGIC, 87, DvTimings);
@@ -95,6 +95,6 @@ ioctl_readwrite!(enum_freq_bands, MAGIC, 101, FrequencyBand);
  * Experimental, meant for debugging, testing and internal use.
  * Never use this in applications!
  */
-ioctl_readwrite!(dbg_g_chip_info, MAGIC, 102, DbgChipInfo);
+//ioctl_readwrite!(dbg_g_chip_info, MAGIC, 102, DbgChipInfo);
 
 ioctl_readwrite!(query_ext_ctrl, MAGIC, 103, QueryExtCtrl);

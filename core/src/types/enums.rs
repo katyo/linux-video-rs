@@ -1011,7 +1011,7 @@ enum_impl! {
 
     enum Memory {
         Mmap = 0x1,
-        UerPtr,
+        UserPtr,
         Overlay,
         DmaBuf,
     }

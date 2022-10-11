@@ -15,7 +15,7 @@ version = "2"
 [dependencies.nix]
 version = "0.25"
 default-features = false
-features = ["ioctl"]
+features = ["ioctl", "mman"]
 
 [dependencies.getset]
 version = "0.1"

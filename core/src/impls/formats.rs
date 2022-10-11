@@ -4,20 +4,17 @@ use std::os::unix::io::RawFd;
 
 impl Internal<FmtDesc> {
     pub fn query(fd: RawFd, index: u32, type_: BufferType) -> Result<Option<Self>> {
-        let mut q = MaybeUninit::<FmtDesc>::zeroed();
+        let fmt_desc = MaybeUninit::<FmtDesc>::zeroed();
 
         unsafe_call!({
-            {
-                let q = q.assume_init_mut();
-
-                q.index = index;
-                q.type_ = type_;
-            }
-            calls::enum_fmt(fd, q.as_mut_ptr()).map(|_| q.assume_init())
+            let mut fmt_desc = fmt_desc.assume_init();
+            fmt_desc.index = index;
+            fmt_desc.type_ = type_;
+            calls::enum_fmt(fd, &mut fmt_desc).map(|_| fmt_desc)
         })
-        .and_then(|q| {
-            utils::check_str(&q.description)?;
-            Ok(Some(q.into()))
+        .and_then(|fmt_desc| {
+            utils::check_str(&fmt_desc.description)?;
+            Ok(Some(fmt_desc.into()))
         })
         .or_else(|error| {
             if error.kind() == std::io::ErrorKind::InvalidInput {

@@ -5,11 +5,12 @@ use std::os::unix::io::RawFd;
 
 impl Internal<QueryCtrl> {
     pub fn query(fd: RawFd, id: u32) -> Result<Self> {
-        let mut ctrl = MaybeUninit::<QueryCtrl>::zeroed();
+        let ctrl = MaybeUninit::<QueryCtrl>::zeroed();
 
         let ctrl = unsafe_call!({
-            ctrl.assume_init_mut().id = id;
-            calls::query_ctrl(fd, ctrl.as_mut_ptr()).map(|_| ctrl.assume_init())
+            let mut ctrl = ctrl.assume_init();
+            ctrl.id = id;
+            calls::query_ctrl(fd, &mut ctrl).map(|_| ctrl)
         })?;
 
         utils::check_str(&ctrl.name)?;
@@ -117,11 +118,12 @@ impl From<QueryCtrl> for QueryExtCtrl {
 
 impl Internal<QueryExtCtrl> {
     pub fn query(fd: RawFd, id: u32) -> Result<Self> {
-        let mut ctrl = MaybeUninit::<QueryExtCtrl>::zeroed();
+        let ctrl = MaybeUninit::<QueryExtCtrl>::zeroed();
 
         let ctrl = unsafe_call!({
-            ctrl.assume_init_mut().id = id;
-            calls::query_ext_ctrl(fd, ctrl.as_mut_ptr()).map(|_| ctrl.assume_init())
+            let mut ctrl = ctrl.assume_init();
+            ctrl.id = id;
+            calls::query_ext_ctrl(fd, &mut ctrl).map(|_| ctrl)
         })?;
 
         utils::check_str(&ctrl.name)?;
