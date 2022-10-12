@@ -1170,14 +1170,25 @@ enum_impl! {
         NoCacheInvalidate = 0x800,
         NoCacheClean = 0x1000,
         TimestampMask = 0xe000,
-        TimestampUnknown = 0x0,
-        TimestampMonotonic = 0x2000,
-        TimestampCopy = 0x4000,
+        //TimestampUnknown = 0x0,
+        //TimestampMonotonic = 0x2000,
+        //TimestampCopy = 0x4000,
         TimestampSrcMask = 0x70000,
-        TimestampSrcEof = 0x0,
-        TimestampSrcSoe = 0x10000,
+        //TimestampSrcEof = 0x0,
+        //TimestampSrcSoe = 0x10000,
         Last = 0x100000,
         RequestFd = 0x800000,
+    }
+
+    enum Timestamp {
+        Unknown = 0x0,
+        Monotonic = 0x2000,
+        Copy = 0x4000,
+    }
+
+    enum TimestampSrc {
+        Eof = 0x0,
+        Soe = 0x10000,
     }
 
     mask FrameBufferCapabilityFlag {
@@ -1577,6 +1588,18 @@ impl BufferType {
 
     pub fn is_capture(&self) -> bool {
         !self.is_output()
+    }
+}
+
+impl BufferFlag {
+    /// Get timestamp type
+    pub fn timestamp(self) -> Timestamp {
+        unsafe { core::mem::transmute(self.bits & Self::TimestampMask.bits) }
+    }
+
+    /// Get source timestamp type
+    pub fn timestamp_src(self) -> TimestampSrc {
+        unsafe { core::mem::transmute(self.bits & Self::TimestampSrcMask.bits) }
     }
 }
 

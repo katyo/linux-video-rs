@@ -763,8 +763,6 @@ pub struct Buffer {
     #[get_copy = "pub"]
     pub(crate) timestamp: TimeVal,
 
-    /// Buffer time code
-    #[get_copy = "pub"]
     pub(crate) timecode: TimeCode,
 
     /// Buffer sequence

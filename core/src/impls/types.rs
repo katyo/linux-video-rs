@@ -27,3 +27,19 @@ impl core::fmt::Display for Area {
         self.height.fmt(f)
     }
 }
+
+impl core::fmt::Display for TimeCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.type_.fmt(f)?;
+        if !self.flags.is_none() {
+            ' '.fmt(f)?;
+            self.flags.fmt(f)?;
+        }
+        ' '.fmt(f)?;
+        write!(
+            f,
+            "{:02}:{:02}:{:02},{:03}",
+            self.hours, self.minutes, self.seconds, self.frames
+        )
+    }
+}

@@ -62,6 +62,20 @@ fn main() -> Result<()> {
 
     dev.set_control(&contrast)?;
 
+    let frames = dev.queue(BufferType::VideoCapture, Memory::Mmap, 2)?;
+
+    let mut i = 0;
+    for frame in frames {
+        let data = frame?;
+
+        println!("#{} F: {}", i, data);
+
+        i += 1;
+        if i > 30 {
+            break;
+        }
+    }
+
     contrast.try_mut::<i32>().map(|val| *val = 32);
 
     dev.set_control(&contrast)?;

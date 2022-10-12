@@ -23,7 +23,7 @@ impl AsRawFd for Device {
 impl Device {
     /// Open video device
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let file = open(path, true)?;
+        let file = open(path, false)?;
 
         Ok(Device { file })
     }
@@ -124,6 +124,16 @@ impl Device {
             height,
             index: 0,
         }
+    }
+
+    /// Create queue
+    pub fn queue(&self, type_: BufferType, memory: Memory, count: usize) -> Result<Queue> {
+        let file = self.file.try_clone()?;
+        let mut queue = Internal::<IoQueue>::new(self.as_raw_fd(), type_, memory, count as _)?;
+
+        queue.start(file.as_raw_fd())?;
+
+        Ok(Queue { file, queue })
     }
 }
 
@@ -317,3 +327,31 @@ impl<'i> Iterator for FrmIvals<'i> {
 }
 
 impl<'i> core::iter::FusedIterator for FrmIvals<'i> {}
+
+/// Data I/O queue
+pub struct Queue {
+    file: File,
+    queue: Internal<IoQueue>,
+}
+
+impl Drop for Queue {
+    fn drop(&mut self) {
+        let _ = self.queue.stop(self.file.as_raw_fd());
+    }
+}
+
+impl Queue {
+    fn next_sample(&mut self) -> Result<IoBuffer> {
+        self.queue.queue(self.file.as_raw_fd())?;
+        self.queue.dequeue(self.file.as_raw_fd())
+    }
+}
+
+impl Iterator for Queue {
+    type Item = Result<IoBuffer>;
+
+    /// Get next buffer to read data from or write data to depending from direction
+    fn next(&mut self) -> Option<Result<IoBuffer>> {
+        Some(self.next_sample())
+    }
+}
