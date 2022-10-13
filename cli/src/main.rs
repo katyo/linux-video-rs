@@ -2,7 +2,7 @@ use anyhow::Result;
 use v4l2::{types::*, Device};
 
 fn main() -> Result<()> {
-    let dev = Device::open("/dev/video0")?;
+    let dev = Device::open("/dev/video2")?;
 
     let caps = dev.capabilities()?;
 
@@ -62,13 +62,14 @@ fn main() -> Result<()> {
 
     dev.set_control(&contrast)?;
 
-    let frames = dev.queue(BufferType::VideoCapture, Memory::Mmap, 2)?;
+    let frames = dev.queue::<Capture, Mmap>(BufferType::VideoCapture, 2)?;
 
     let mut i = 0;
-    for frame in frames {
-        let data = frame?;
+    while let Ok(frame) = frames.next() {
+        //for frame in frames {
+        //let data = frame?;
 
-        println!("#{} F: {}", i, data);
+        println!("#{} F: {}", i, frame);
 
         i += 1;
         if i > 30 {

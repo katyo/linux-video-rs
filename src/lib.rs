@@ -1,7 +1,6 @@
+use types::*;
 pub use v4l2_core as types;
 use v4l2_core::private::*;
-
-use types::*;
 
 use std::{
     fs::File,
@@ -127,13 +126,12 @@ impl Device {
     }
 
     /// Create queue
-    pub fn queue(&self, type_: BufferType, memory: Memory, count: usize) -> Result<Queue> {
-        let file = self.file.try_clone()?;
-        let mut queue = Internal::<IoQueue>::new(self.as_raw_fd(), type_, memory, count as _)?;
-
-        queue.start(file.as_raw_fd())?;
-
-        Ok(Queue { file, queue })
+    pub fn queue<Dir: Direction, Met: Method>(
+        &self,
+        type_: BufferType,
+        count: usize,
+    ) -> Result<Queue<Dir, Met>> {
+        Queue::new(self.file.try_clone()?, type_, count)
     }
 }
 
@@ -329,29 +327,44 @@ impl<'i> Iterator for FrmIvals<'i> {
 impl<'i> core::iter::FusedIterator for FrmIvals<'i> {}
 
 /// Data I/O queue
-pub struct Queue {
+pub struct Queue<Dir, Met: Method> {
     file: File,
-    queue: Internal<IoQueue>,
+    queue: Internal<QueueData<Dir, Met>>,
 }
 
-impl Drop for Queue {
+impl<Dir, Met: Method> Drop for Queue<Dir, Met> {
     fn drop(&mut self) {
-        let _ = self.queue.stop(self.file.as_raw_fd());
+        let fd = self.file.as_raw_fd();
+        let _ = self.queue.stop(fd);
+        let _ = self.queue.del(fd);
     }
 }
 
-impl Queue {
-    fn next_sample(&mut self) -> Result<IoBuffer> {
-        self.queue.queue(self.file.as_raw_fd())?;
+impl<Dir, Met: Method> Queue<Dir, Met> {
+    fn new(file: File, type_: BufferType, count: usize) -> Result<Self>
+    where
+        Dir: Direction,
+    {
+        let queue = Internal::<QueueData<Dir, Met>>::new(file.as_raw_fd(), type_, count as _)?;
+
+        queue.start(file.as_raw_fd())?;
+
+        Ok(Self { file, queue })
+    }
+
+    pub fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
+        self.queue.enqueue_all(self.file.as_raw_fd())?;
         self.queue.dequeue(self.file.as_raw_fd())
     }
 }
 
-impl Iterator for Queue {
-    type Item = Result<IoBuffer>;
+/*
+impl<'r, Dir, Met: Method + 'static> Iterator for Queue<'r, Dir, Met> {
+    type Item = Result<BufferData<'r, Dir, Met>>;
 
     /// Get next buffer to read data from or write data to depending from direction
-    fn next(&mut self) -> Option<Result<IoBuffer>> {
+    fn next(&mut self) -> Option<Result<BufferData<'r, Dir, Met>>> {
         Some(self.next_sample())
     }
 }
+*/

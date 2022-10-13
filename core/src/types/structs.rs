@@ -684,14 +684,32 @@ pub(crate) union FrmIvalEnumUnion {
 
 /// Time code
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct TimeCode {
+    /// Type of time code
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) type_: TimeCodeType,
+
+    /// Time code flags
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) flags: TimeCodeFlag,
+
+    /// Number of frames left
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) frames: u8,
+
+    /// Number of seconds left
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) seconds: u8,
+
+    /// Number of minutes left
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) minutes: u8,
+
+    /// Number of hours left
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) hours: u8,
+
     pub(crate) userbits: [u8; 4],
 }
 
@@ -740,43 +758,42 @@ pub(crate) union PlaneUnion {
 #[derive(Copy, Clone, CopyGetters)]
 pub struct Buffer {
     /// Buffer index
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) index: u32,
 
     /// Buffer type
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) type_: BufferType,
 
     /// Number of bytes in use
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) bytes_used: u32,
 
     /// Buffer flags
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) flags: BufferFlag,
 
     /// Buffer field
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) field: Field,
 
     /// Buffer time
-    #[get_copy = "pub"]
     pub(crate) timestamp: TimeVal,
 
     pub(crate) timecode: TimeCode,
 
     /// Buffer sequence
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) sequence: u32,
 
     /// Buffer memory
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) memory: Memory,
 
     pub(crate) m: BufferM,
 
     /// Buffer capacity in bytes
-    #[get_copy = "pub"]
+    #[getset(get_copy = "pub")]
     pub(crate) length: u32,
 
     pub(crate) reserved2: u32,

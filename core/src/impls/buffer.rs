@@ -1,14 +1,41 @@
-use crate::{calls, types::*, Internal, Result};
-use core::mem::{ManuallyDrop, MaybeUninit};
+use crate::{calls, types::*, utils, Internal, Result};
+use core::{
+    marker::PhantomData,
+    mem::{ManuallyDrop, MaybeUninit},
+};
 use getset::CopyGetters;
 use nix::sys::time::TimeValLike;
 use std::{
     os::unix::io::RawFd,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc,
-    },
+    sync::{Mutex, MutexGuard},
 };
+
+/// Direction types
+pub trait Direction {
+    const TYPES: &'static [BufferType];
+}
+
+macro_rules! direction_impl {
+    ($($(#[$($meta:meta)*])* $type:ident: $($buf_types:ident)*,)*) => {
+        $(
+            $(#[$($meta)*])*
+            #[derive(Debug, Clone, Copy)]
+            pub struct $type;
+
+            impl Direction for $type {
+                const TYPES: &'static [BufferType] = &[$(BufferType::$buf_types),*];
+            }
+        )*
+    };
+}
+
+direction_impl! {
+    /// Capture (input direction)
+    Capture: VideoCapture VbiCapture SlicedVbiCapture VideoOverlay VideoCaptureMplane SdrCapture MetaCapture,
+
+    /// Render (output direction)
+    Render: VideoOutput VbiOutput SlicedVbiOutput VideoOutputOverlay VideoOutputMplane SdrOutput MetaOutput,
+}
 
 impl Internal<BufferType> {
     /// Start stream
@@ -41,15 +68,59 @@ impl Internal<RequestBuffers> {
     }
 }
 
-impl Buffer {
-    /// Get timestamp as duration
-    pub fn duration(&self) -> core::time::Duration {
-        core::time::Duration::from_micros(self.timestamp.num_microseconds() as _)
+/// Something which can be used as timestamp
+pub trait IsTimestamp {
+    /// Convert from timeval
+    fn from_timestamp(timeval: TimeVal) -> Self;
+
+    /// Convert into timeval
+    fn into_timestamp(self) -> TimeVal;
+}
+
+impl IsTimestamp for TimeVal {
+    fn from_timestamp(timeval: TimeVal) -> Self {
+        timeval
     }
 
-    /// Get timestamp as system time
-    pub fn time(&self) -> std::time::SystemTime {
-        std::time::SystemTime::UNIX_EPOCH + self.duration()
+    fn into_timestamp(self) -> TimeVal {
+        self
+    }
+}
+
+impl IsTimestamp for core::time::Duration {
+    fn from_timestamp(timeval: TimeVal) -> Self {
+        core::time::Duration::from_micros(timeval.num_microseconds() as _)
+    }
+
+    fn into_timestamp(self) -> TimeVal {
+        TimeVal::microseconds(self.as_micros() as _)
+    }
+}
+
+impl IsTimestamp for std::time::SystemTime {
+    fn from_timestamp(timeval: TimeVal) -> Self {
+        std::time::SystemTime::UNIX_EPOCH
+            + core::time::Duration::from_micros(timeval.num_microseconds() as _)
+    }
+
+    fn into_timestamp(self) -> TimeVal {
+        TimeVal::microseconds(
+            self.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_micros() as _,
+        )
+    }
+}
+
+impl Buffer {
+    /// Get timestamp
+    pub fn timestamp<T: IsTimestamp>(&self) -> T {
+        T::from_timestamp(self.timestamp)
+    }
+
+    /// Set timestamp
+    pub fn set_timestamp<T: IsTimestamp>(&mut self, time: T) {
+        self.timestamp = time.into_timestamp();
     }
 
     /// Buffer has time code
@@ -64,6 +135,22 @@ impl Buffer {
         } else {
             None
         }
+    }
+
+    /// Set time code
+    pub fn set_timecode(&mut self, timecode: Option<TimeCode>) {
+        if let Some(timecode) = timecode {
+            self.timecode = timecode;
+            self.flags |= BufferFlag::TimeCode;
+        } else {
+            self.timecode = unsafe { MaybeUninit::zeroed().assume_init() };
+            self.flags &= !BufferFlag::TimeCode;
+        }
+    }
+
+    /// Is buffer locked by driver
+    pub fn is_queued(&self) -> bool {
+        self.flags.contains(BufferFlag::Queued)
     }
 }
 
@@ -113,10 +200,8 @@ impl Internal<Buffer> {
     }
 
     /// Query bufer by index
-    pub fn query(fd: RawFd, type_: BufferType, memory: Memory, index: u32) -> Result<Self> {
-        let mut buffer = Self::new(type_, memory, index);
-
-        unsafe_call!(calls::query_buf(fd, buffer.as_mut()).map(|_| buffer))
+    pub fn query(&mut self, fd: RawFd) -> Result<()> {
+        unsafe_call!(calls::query_buf(fd, self.as_mut()).map(|_| ()))
     }
 
     /// Queue buffer
@@ -128,186 +213,216 @@ impl Internal<Buffer> {
     pub fn dequeue(&mut self, fd: RawFd) -> Result<()> {
         unsafe_call!(calls::dq_buf(fd, self.as_mut()).map(|_| ()))
     }
+
+    pub fn mark_dequeued(&mut self) {
+        self.flags &= !BufferFlag::Queued;
+    }
 }
 
-struct BufferData {
+/// I/O method types
+pub trait Method {
+    /// Corresponding memory type
+    const MEMORY: Memory;
+
+    /// Initialize pointer to data
+    fn init(buffer: &Buffer, fd: RawFd) -> Result<*mut u8>;
+
+    /// Deinitialize pointer to data
+    fn done(buffer: &Buffer, pointer: *mut u8);
+
+    /// Update buffer before enqueueing
+    fn update(_buffer: &mut Buffer, _pointer: *mut u8) {}
+}
+
+/// Memory mapping
+#[derive(Debug, Clone, Copy)]
+pub struct Mmap;
+
+impl Method for Mmap {
+    const MEMORY: Memory = Memory::Mmap;
+
+    fn init(buffer: &Buffer, fd: RawFd) -> Result<*mut u8> {
+        use nix::sys::mman::{mmap, MapFlags, ProtFlags};
+
+        unsafe_call!(mmap(
+            core::ptr::null_mut(),
+            buffer.length as _,
+            ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+            MapFlags::MAP_SHARED,
+            fd,
+            buffer.m.offset as _,
+        ))
+        .map(|pointer| pointer as _)
+    }
+
+    fn done(buffer: &Buffer, pointer: *mut u8) {
+        use nix::sys::mman::munmap;
+
+        let _ = unsafe_call!(munmap(pointer as *mut _, buffer.length as _));
+    }
+}
+
+/// Userspace pointer
+#[derive(Debug, Clone, Copy)]
+pub struct UserPtr;
+
+impl Method for UserPtr {
+    const MEMORY: Memory = Memory::UserPtr;
+
+    fn init(buffer: &Buffer, _fd: RawFd) -> Result<*mut u8> {
+        let mut buffer = Vec::<u8>::with_capacity(buffer.length as _);
+
+        let pointer = buffer.as_mut_ptr();
+
+        let _ = ManuallyDrop::new(buffer);
+
+        Ok(pointer)
+    }
+
+    fn done(buffer: &Buffer, pointer: *mut u8) {
+        let _ = unsafe { Vec::<u8>::from_raw_parts(pointer, 0, buffer.length as _) };
+    }
+
+    fn update(buffer: &mut Buffer, pointer: *mut u8) {
+        buffer.m.userptr = pointer as _;
+    }
+}
+
+struct BufferState<Met: Method> {
     pointer: *mut u8,
     buffer: Internal<Buffer>,
-    used: AtomicU32,
-    queued: bool,
+    _phantom: PhantomData<Met>,
 }
 
-impl BufferData {
-    #[inline(always)]
-    fn used(&self) -> u32 {
-        self.used.load(Ordering::SeqCst)
-    }
+impl<Met: Method> core::ops::Deref for BufferState<Met> {
+    type Target = Buffer;
 
-    #[inline(always)]
-    fn set_used(&self, used: u32) {
-        self.used.store(used, Ordering::SeqCst);
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
     }
+}
 
-    #[inline(always)]
-    fn mark_queued(&mut self) {
-        self.queued = true;
+impl<Met: Method> core::ops::DerefMut for BufferState<Met> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.buffer
     }
+}
 
-    #[inline(always)]
-    fn mark_dequeued(&mut self) {
-        self.queued = false;
-    }
-
+impl<Met: Method> BufferState<Met> {
     fn new(fd: RawFd, buffer: Internal<Buffer>) -> Result<Self> {
-        let pointer = match buffer.memory {
-            Memory::Mmap => {
-                use nix::sys::mman::{mmap, MapFlags, ProtFlags};
+        Met::init(&buffer, fd)?;
 
-                unsafe {
-                    mmap(
-                        core::ptr::null_mut(),
-                        buffer.length as _,
-                        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                        MapFlags::MAP_SHARED,
-                        fd,
-                        buffer.m.offset as _,
-                    )
-                    .map(|pointer| pointer as *mut u8)
-                }?
-            }
-            Memory::UserPtr => {
-                let mut data = Vec::<u8>::with_capacity(buffer.length as _);
-                let pointer = data.as_mut_ptr();
-                let _ = ManuallyDrop::new(data);
-                pointer
-            }
-            _ => unimplemented!(),
+        let data = Self {
+            pointer: core::ptr::null_mut(),
+            buffer,
+            _phantom: PhantomData,
         };
 
-        Ok(Self {
-            pointer,
-            buffer,
-            used: AtomicU32::new(buffer.bytes_used),
-            queued: false,
-        })
+        Ok(data)
     }
 
-    fn try_queue(&mut self, fd: RawFd) -> Result<bool> {
-        Ok(if self.queued {
-            false
-        } else {
-            // update buffer data
-            match self.buffer.memory {
-                Memory::Mmap => {
-                    // nothing to do
-                }
-                Memory::UserPtr => {
-                    self.buffer.m.userptr = self.pointer as _;
-                }
-                _ => unimplemented!(),
-            }
-
-            // update used bytes
-            self.buffer.bytes_used = self.used();
-
-            // add buffer to queue
-            self.buffer.queue(fd)?;
-
-            self.mark_queued();
-            true
-        })
+    fn enqueue(&mut self, fd: RawFd) -> Result<()> {
+        // update buffer data
+        Met::update(&mut self.buffer, self.pointer);
+        // add buffer to queue
+        self.buffer.queue(fd)
     }
 
-    #[inline(always)]
+    fn try_enqueue(&mut self, fd: RawFd) -> Result<()> {
+        if !self.buffer.is_queued() {
+            self.enqueue(fd)?;
+        }
+        Ok(())
+    }
+
     fn dequeue(&mut self, buffer: Internal<Buffer>) {
-        self.set_used(buffer.bytes_used);
         self.buffer = buffer;
-        self.mark_dequeued();
+    }
+
+    fn mark_dequeued(&mut self) {
+        self.buffer.mark_dequeued()
     }
 }
 
-impl Drop for BufferData {
+impl<Met: Method> Drop for BufferState<Met> {
     fn drop(&mut self) {
-        match self.buffer.memory {
-            Memory::Mmap => {
-                use nix::sys::mman::munmap;
-
-                let _ = unsafe_call!(munmap(self.pointer as *mut _, self.buffer.length as _));
-            }
-            Memory::UserPtr => {
-                let _ =
-                    unsafe { Vec::<u8>::from_raw_parts(self.pointer, 0, self.buffer.length as _) };
-                // drop buffer
-            }
-            _ => unimplemented!(),
-        }
+        Met::done(&mut self.buffer, self.pointer)
     }
 }
 
 #[derive(CopyGetters)]
-pub struct IoQueue {
-    buffers: Vec<Arc<BufferData>>,
+pub struct QueueData<Dir, Met: Method> {
+    buffers: Vec<Mutex<BufferState<Met>>>,
 
     /// Buffers type
     #[getset(get_copy = "pub")]
     type_: Internal<BufferType>,
 
-    /// Memory type
-    #[getset(get_copy = "pub")]
-    memory: Memory,
+    _phantom: PhantomData<Dir>,
 }
 
-impl IoQueue {
+impl<Dir, Met: Method> QueueData<Dir, Met> {
     /// Get actual number of buffers
     pub fn len(&self) -> usize {
         self.buffers.len()
     }
 }
 
-impl Internal<IoQueue> {
-    /// Create buffer queue
-    pub fn new(fd: RawFd, type_: BufferType, memory: Memory, count: u32) -> Result<Self> {
-        let request_buffers = Internal::<RequestBuffers>::request(fd, type_, memory, count)?;
+impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
+    /// Create buffers queue
+    pub fn new(fd: RawFd, type_: BufferType, count: u32) -> Result<Self>
+    where
+        Dir: Direction,
+    {
+        if !Dir::TYPES.contains(&type_) {
+            return Err(utils::invalid_input("Invalid buffer type"));
+        }
+
+        let request_buffers = Internal::<RequestBuffers>::request(fd, type_, Met::MEMORY, count)?;
 
         let count = request_buffers.count;
 
         let mut buffers = Vec::with_capacity(count as _);
 
         for index in 0..count {
-            let buffer = Internal::<Buffer>::query(fd, type_, memory, index)?;
-            let data = Arc::new(BufferData::new(fd, buffer)?);
-            buffers.push(data);
+            let mut buffer = Internal::<Buffer>::new(type_, Met::MEMORY, index);
+            buffer.query(fd)?;
+            let data = BufferState::new(fd, buffer)?;
+            buffers.push(Mutex::new(data));
         }
 
         let type_ = type_.into();
 
-        Ok(IoQueue {
+        Ok(QueueData {
             buffers,
             type_,
-            memory,
+            _phantom: PhantomData,
         }
         .into())
     }
 
+    /// Delete buffers queue
     pub fn del(&mut self, fd: RawFd) -> Result<()> {
         let _request_buffers =
-            Internal::<RequestBuffers>::request(fd, *self.type_, self.memory, 0)?;
+            Internal::<RequestBuffers>::request(fd, *self.type_, Met::MEMORY, 0)?;
 
         Ok(())
     }
 
-    pub fn start(&mut self, fd: RawFd) -> Result<()> {
-        self.queue(fd)?;
+    /// Enqueue all dequeued buffers and start stream
+    pub fn start(&self, fd: RawFd) -> Result<()> {
+        self.enqueue_all(fd)?;
         self.type_.stream_on(fd)
     }
 
-    pub fn stop(&mut self, fd: RawFd) -> Result<()> {
+    /// Stop stream and dequeue all enqueued buffers
+    pub fn stop(&self, fd: RawFd) -> Result<()> {
         self.type_.stream_off(fd)?;
         // stream_off removes all buffers from both queues
         // and unlocks all buffers as a side effect
 
-        for data in &mut self.buffers {
-            if let Some(data) = Arc::get_mut(data) {
+        for data in &self.buffers {
+            if let Ok(mut data) = data.try_lock() {
                 data.mark_dequeued();
             }
         }
@@ -315,37 +430,39 @@ impl Internal<IoQueue> {
         Ok(())
     }
 
-    pub fn queue(&mut self, fd: RawFd) -> Result<()> {
-        for data in &mut self.buffers {
-            if let Some(data) = Arc::get_mut(data) {
-                data.try_queue(fd)?;
+    /// Enqueue all dequeued buffers
+    pub fn enqueue_all(&self, fd: RawFd) -> Result<()> {
+        for data in &self.buffers {
+            if let Ok(mut data) = data.try_lock() {
+                data.try_enqueue(fd)?;
             }
         }
         Ok(())
     }
 
-    pub fn dequeue(&mut self, fd: RawFd) -> Result<IoBuffer> {
-        let mut buffer = Internal::<Buffer>::new(*self.type_, self.memory, 0);
+    /// Try dequeue buffer
+    pub fn dequeue(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>> {
+        let mut buffer = Internal::<Buffer>::new(*self.type_, Met::MEMORY, 0);
 
         buffer.dequeue(fd)?;
 
-        let data = &mut self.buffers[buffer.index as usize];
+        let index = buffer.index as usize;
 
-        assert!(data.queued);
-
-        Arc::get_mut(data).unwrap().dequeue(buffer);
-
-        let data = data.clone();
-
-        Ok(IoBuffer { data })
+        if let Ok(mut data) = self.buffers[index].try_lock() {
+            data.dequeue(buffer);
+            Ok(BufferData::new(data))
+        } else {
+            unreachable!();
+        }
     }
 }
 
-pub struct IoBuffer {
-    data: Arc<BufferData>,
+pub struct BufferData<'r, Dir, Met: Method> {
+    data: MutexGuard<'r, BufferState<Met>>,
+    _phantom: PhantomData<Dir>,
 }
 
-impl core::ops::Deref for IoBuffer {
+impl<'r, Dir, Met: Method> core::ops::Deref for BufferData<'r, Dir, Met> {
     type Target = Buffer;
 
     fn deref(&self) -> &Self::Target {
@@ -353,41 +470,55 @@ impl core::ops::Deref for IoBuffer {
     }
 }
 
-impl IoBuffer {
+impl<'r, Met: Method> core::ops::DerefMut for BufferData<'r, Render, Met> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data.buffer
+    }
+}
+
+impl<'r, Dir, Met: Method> AsRef<[u8]> for BufferData<'r, Dir, Met> {
+    fn as_ref(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self.data.pointer, self.len()) }
+    }
+}
+
+impl<'r, Met: Method> AsMut<[u8]> for BufferData<'r, Render, Met> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut(self.data.pointer, self.len()) }
+    }
+}
+
+impl<'r, Met: Method> BufferData<'r, Render, Met> {
+    /// Set new size of buffer
+    ///
+    /// New size should be less than or equal to capacity.
+    /// If new size greater than capacity it will be set to be equal to capacity.
+    pub fn set_len(&mut self, len: usize) {
+        self.data.buffer.bytes_used = self.data.buffer.length.min(len as _);
+    }
+}
+
+impl<'r, Dir, Met: Method> BufferData<'r, Dir, Met> {
+    #[inline(always)]
+    fn new(data: MutexGuard<'r, BufferState<Met>>) -> Self {
+        Self {
+            data,
+            _phantom: PhantomData,
+        }
+    }
+
     /// Get curren length of buffer in bytes
     pub fn len(&self) -> usize {
-        self.data.used() as _
+        self.data.buffer.bytes_used as _
     }
 
     /// Get available buffer capacity in bytes
     pub fn capacity(&self) -> usize {
         self.data.buffer.length as _
     }
-
-    /// Set new size of buffer
-    ///
-    /// New size should be less than or equal to capacity.
-    /// If new size greater than capacity it will be set to be equal to capacity.
-    pub fn resize(&mut self, size: usize) {
-        let size = self.data.buffer.length.max(size as _);
-
-        self.data.set_used(size);
-    }
 }
 
-impl AsRef<[u8]> for IoBuffer {
-    fn as_ref(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self.data.pointer, self.data.used() as _) }
-    }
-}
-
-impl AsMut<[u8]> for IoBuffer {
-    fn as_mut(&mut self) -> &mut [u8] {
-        unsafe { core::slice::from_raw_parts_mut(self.data.pointer, self.data.used() as _) }
-    }
-}
-
-impl core::fmt::Display for IoBuffer {
+impl<'r, Dir, Met: Method> core::fmt::Display for BufferData<'r, Dir, Met> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         self.data.buffer.as_ref().fmt(f)
     }
