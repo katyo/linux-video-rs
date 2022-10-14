@@ -128,7 +128,7 @@ impl Device {
     /// Create queue
     pub fn queue<Dir: Direction, Met: Method>(
         &self,
-        type_: BufferType,
+        type_: Dir,
         count: usize,
     ) -> Result<Queue<Dir, Met>> {
         Queue::new(self.file.try_clone()?, type_, count)
@@ -341,7 +341,7 @@ impl<Dir, Met: Method> Drop for Queue<Dir, Met> {
 }
 
 impl<Dir, Met: Method> Queue<Dir, Met> {
-    fn new(file: File, type_: BufferType, count: usize) -> Result<Self>
+    fn new(file: File, type_: Dir, count: usize) -> Result<Self>
     where
         Dir: Direction,
     {
@@ -353,8 +353,10 @@ impl<Dir, Met: Method> Queue<Dir, Met> {
     }
 
     pub fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
-        self.queue.enqueue_all(self.file.as_raw_fd())?;
-        self.queue.dequeue(self.file.as_raw_fd())
+        let fd = self.file.as_raw_fd();
+
+        self.queue.enqueue_all(fd)?;
+        self.queue.dequeue(fd)
     }
 }
 

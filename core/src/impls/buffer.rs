@@ -12,29 +12,79 @@ use std::{
 
 /// Direction types
 pub trait Direction {
-    const TYPES: &'static [BufferType];
+    //const TYPES: &'static [BufferType];
+    fn buffer_type(&self) -> BufferType;
 }
 
 macro_rules! direction_impl {
-    ($($(#[$($meta:meta)*])* $type:ident: $($buf_types:ident)*,)*) => {
+    ($($(#[$($meta:meta)*])* $type:ident {
+        $($(#[$($variant_meta:meta)*])* $content_type:ident = $buffer_type:ident,)*
+    })*) => {
         $(
-            $(#[$($meta)*])*
-            #[derive(Debug, Clone, Copy)]
-            pub struct $type;
+            enum_impl! {
+                $(#[$($meta)*])*
+                enum $type {
+                    $(
+                        $(#[$($variant_meta)*])*
+                        $content_type = BufferType::$buffer_type as u32,
+                    )*
+                }
+            }
+
+            impl From<$type> for BufferType {
+                fn from(type_: $type) -> Self {
+                    unsafe { core::mem::transmute(type_) }
+                }
+            }
 
             impl Direction for $type {
-                const TYPES: &'static [BufferType] = &[$(BufferType::$buf_types),*];
+                //const TYPES: &'static [BufferType] = &[$(BufferType::$buf_types),*];
+                fn buffer_type(&self) -> BufferType {
+                    (*self).into()
+                }
             }
         )*
     };
 }
 
+/*
+enum_impl! {
+    /// Buffer content type
+    enum ContentType {
+        Video,
+        Vbi,
+        SlicedVbi,
+        VideoOverlay,
+        VideoMplane,
+        Sdr,
+        Meta,
+    }
+}
+*/
+
 direction_impl! {
     /// Capture (input direction)
-    Capture: VideoCapture VbiCapture SlicedVbiCapture VideoOverlay VideoCaptureMplane SdrCapture MetaCapture,
+    In {
+        /// Video capture
+        Video = VideoCapture,
+        Vbi = VbiCapture,
+        SlicedVbi = SlicedVbiCapture,
+        VideoOverlay = VideoOverlay,
+        VideoMplane = VideoCaptureMplane,
+        Sdr = SdrCapture,
+        Meta = MetaCapture,
+    }
 
     /// Render (output direction)
-    Render: VideoOutput VbiOutput SlicedVbiOutput VideoOutputOverlay VideoOutputMplane SdrOutput MetaOutput,
+    Out  {
+        Video = VideoOutput,
+        Vbi = VbiOutput,
+        SlicedVbi = SlicedVbiOutput,
+        VideoOverlay = VideoOutputOverlay,
+        VideoMplane = VideoOutputMplane,
+        Sdr = SdrOutput,
+        Meta = MetaOutput,
+    }
 }
 
 impl Internal<BufferType> {
@@ -370,13 +420,11 @@ impl<Dir, Met: Method> QueueData<Dir, Met> {
 
 impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Create buffers queue
-    pub fn new(fd: RawFd, type_: BufferType, count: u32) -> Result<Self>
+    pub fn new(fd: RawFd, type_: Dir, count: u32) -> Result<Self>
     where
         Dir: Direction,
     {
-        if !Dir::TYPES.contains(&type_) {
-            return Err(utils::invalid_input("Invalid buffer type"));
-        }
+        let type_ = type_.buffer_type();
 
         let request_buffers = Internal::<RequestBuffers>::request(fd, type_, Met::MEMORY, count)?;
 
@@ -470,7 +518,7 @@ impl<'r, Dir, Met: Method> core::ops::Deref for BufferData<'r, Dir, Met> {
     }
 }
 
-impl<'r, Met: Method> core::ops::DerefMut for BufferData<'r, Render, Met> {
+impl<'r, Met: Method> core::ops::DerefMut for BufferData<'r, Out, Met> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data.buffer
     }
@@ -482,13 +530,13 @@ impl<'r, Dir, Met: Method> AsRef<[u8]> for BufferData<'r, Dir, Met> {
     }
 }
 
-impl<'r, Met: Method> AsMut<[u8]> for BufferData<'r, Render, Met> {
+impl<'r, Met: Method> AsMut<[u8]> for BufferData<'r, Out, Met> {
     fn as_mut(&mut self) -> &mut [u8] {
         unsafe { core::slice::from_raw_parts_mut(self.data.pointer, self.len()) }
     }
 }
 
-impl<'r, Met: Method> BufferData<'r, Render, Met> {
+impl<'r, Met: Method> BufferData<'r, Out, Met> {
     /// Set new size of buffer
     ///
     /// New size should be less than or equal to capacity.

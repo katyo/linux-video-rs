@@ -62,7 +62,7 @@ fn main() -> Result<()> {
 
     dev.set_control(&contrast)?;
 
-    let frames = dev.queue::<Capture, Mmap>(BufferType::VideoCapture, 2)?;
+    let frames = dev.queue::<In, Mmap>(In::Video, 2)?;
 
     let mut i = 0;
     while let Ok(frame) = frames.next() {
