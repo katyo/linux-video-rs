@@ -199,7 +199,6 @@ impl<T: IsPlainCtrlData> RefValue<ExtControl> for T {
                     return Some(unsafe { &*(data.union_.ptr as *const _) });
                 }
             } else if core::mem::size_of::<T>() <= core::mem::size_of::<ExtControlUnion>() {
-                #[allow(unaligned_references)]
                 return Some(unsafe { &*(&data.union_.value as *const _ as *const _) });
             }
         }
@@ -215,7 +214,6 @@ impl<T: IsPlainCtrlData> MutValue<ExtControl> for T {
                     return Some(unsafe { &mut *(data.union_.ptr as *mut _) });
                 }
             } else if core::mem::size_of::<T>() <= core::mem::size_of::<ExtControlUnion>() {
-                #[allow(unaligned_references)]
                 return Some(unsafe { &mut *(&mut data.union_.value as *mut _ as *mut _) });
             }
         }

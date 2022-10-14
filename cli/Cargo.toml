@@ -1,28 +1,25 @@
 [package]
-name = "v4l2-cli"
+name = "linux-video-cli"
 description = "Linux video device interfacing (utils)"
 version = "0.1.0"
 authors = ["K. <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
 categories = ["command-line-utilities"]
-keywords = ["v4l", "v4l2", "Linux", "ioctl"]
+keywords = ["v4l", "v4l2", "video", "linux", "ioctl"]
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "v4l2"
+name = "video-cli"
 path = "src/main.rs"
 
-[dependencies.v4l2]
+[dependencies.linux-video]
 path = ".."
 version = "0.1.0"
 default-features = false
-#features = ["clap"]
-
-[dependencies.anyhow]
-version = "1"
+features = ["clap"]
 
 [dependencies.clap]
-version = "3"
+version = "4"
 features = ["std", "derive"]

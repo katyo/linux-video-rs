@@ -1,11 +1,13 @@
+#![doc = include_str!("../README.md")]
+
+pub use linux_video_core as types;
+use linux_video_core::private::*;
 use types::*;
-pub use v4l2_core as types;
-use v4l2_core::private::*;
 
 use std::{
     fs::File,
     os::unix::io::{AsRawFd, RawFd},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 /// Video device
@@ -20,6 +22,11 @@ impl AsRawFd for Device {
 }
 
 impl Device {
+    /// List video devices
+    pub fn list() -> Result<Devices> {
+        Devices::new()
+    }
+
     /// Open video device
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let file = open(path, false)?;
@@ -125,13 +132,55 @@ impl Device {
         }
     }
 
-    /// Create queue
-    pub fn queue<Dir: Direction, Met: Method>(
+    /// Create stream to input/output data
+    pub fn stream<Dir: Direction, Met: Method>(
         &self,
-        type_: Dir,
+        type_: ContentType,
         count: usize,
-    ) -> Result<Queue<Dir, Met>> {
-        Queue::new(self.file.try_clone()?, type_, count)
+    ) -> Result<Stream<Dir, Met>> {
+        Stream::new(self.file.try_clone()?, type_, count)
+    }
+}
+
+pub struct Devices {
+    reader: std::fs::ReadDir,
+}
+
+impl Devices {
+    fn new() -> Result<Self> {
+        std::fs::read_dir("/dev").map(|reader| Devices { reader })
+    }
+}
+
+impl Iterator for Devices {
+    type Item = Result<PathBuf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use std::os::unix::fs::FileTypeExt;
+
+        loop {
+            if let Some(entry) = self.reader.next() {
+                match entry {
+                    Ok(entry) => {
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            if file_name.starts_with("video") {
+                                match entry.file_type() {
+                                    Ok(file_type) => {
+                                        if file_type.is_char_device() {
+                                            return Some(Ok(entry.path()));
+                                        }
+                                    }
+                                    Err(error) => return Some(Err(error)),
+                                }
+                            }
+                        }
+                    }
+                    Err(error) => return Some(Err(error)),
+                }
+            } else {
+                return None;
+            }
+        }
     }
 }
 
@@ -327,12 +376,12 @@ impl<'i> Iterator for FrmIvals<'i> {
 impl<'i> core::iter::FusedIterator for FrmIvals<'i> {}
 
 /// Data I/O queue
-pub struct Queue<Dir, Met: Method> {
+pub struct Stream<Dir, Met: Method> {
     file: File,
     queue: Internal<QueueData<Dir, Met>>,
 }
 
-impl<Dir, Met: Method> Drop for Queue<Dir, Met> {
+impl<Dir, Met: Method> Drop for Stream<Dir, Met> {
     fn drop(&mut self) {
         let fd = self.file.as_raw_fd();
         let _ = self.queue.stop(fd);
@@ -340,8 +389,8 @@ impl<Dir, Met: Method> Drop for Queue<Dir, Met> {
     }
 }
 
-impl<Dir, Met: Method> Queue<Dir, Met> {
-    fn new(file: File, type_: Dir, count: usize) -> Result<Self>
+impl<Dir, Met: Method> Stream<Dir, Met> {
+    fn new(file: File, type_: ContentType, count: usize) -> Result<Self>
     where
         Dir: Direction,
     {
@@ -359,14 +408,3 @@ impl<Dir, Met: Method> Queue<Dir, Met> {
         self.queue.dequeue(fd)
     }
 }
-
-/*
-impl<'r, Dir, Met: Method + 'static> Iterator for Queue<'r, Dir, Met> {
-    type Item = Result<BufferData<'r, Dir, Met>>;
-
-    /// Get next buffer to read data from or write data to depending from direction
-    fn next(&mut self) -> Option<Result<BufferData<'r, Dir, Met>>> {
-        Some(self.next_sample())
-    }
-}
-*/

@@ -514,3 +514,75 @@ fourcc_impl! {
     /// Rockchip ISP1 3A Statistics
     MetaRkIsp1Stat3a = 'R' 'K' '1' 'S',
 }
+
+impl FourCc {
+    pub fn is_rgb(self) -> bool {
+        matches!(
+            self,
+            Self::Rgb332
+                | Self::Rgb444
+                | Self::Argb444
+                | Self::Xrgb444
+                | Self::Rgba444
+                | Self::Rgbx444
+                | Self::Abgr444
+                | Self::Xbgr444
+                | Self::Bgra444
+                | Self::Bgrx444
+                | Self::Rgb555
+                | Self::Argb555
+                | Self::Xrgb555
+                | Self::Rgba555
+                | Self::Rgbx555
+                | Self::Abgr555
+                | Self::Xbgr555
+                | Self::Bgra555
+                | Self::Bgrx555
+                | Self::Rgb565
+                | Self::Rgb555x
+                | Self::Argb555x
+                | Self::Xrgb555x
+                | Self::Rgb565x
+                | Self::Bgr666
+                | Self::Bgr24
+                | Self::Rgb24
+                | Self::Bgr32
+                | Self::Abgr32
+                | Self::Xbgr32
+                | Self::Bgra32
+                | Self::Bgrx32
+                | Self::Rgb32
+                | Self::Rgba32
+                | Self::Rgbx32
+                | Self::Argb32
+                | Self::Xrgb32
+        )
+    }
+
+    pub fn is_ycbcr(self) -> bool {
+        matches!(
+            self,
+            Self::Nv12
+                | Self::Nv21
+                | Self::Nv16
+                | Self::Nv61
+                | Self::Nv24
+                | Self::Nv42
+                | Self::Nv12m
+                | Self::Nv21m
+                | Self::Nv16m
+                | Self::Nv61m
+                | Self::Nv12_4l4
+                | Self::Nv12_16l16
+                | Self::Nv12_32l32
+                | Self::Nv12mt
+                | Self::Nv12mt16x16
+                | Self::Nv12m8l128
+                | Self::Nv12m10be8l128
+        )
+    }
+
+    pub fn is_hsv(self) -> bool {
+        matches!(self, Self::Hsv24 | Self::Hsv32)
+    }
+}

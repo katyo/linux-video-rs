@@ -1,85 +1,121 @@
-use anyhow::Result;
-use v4l2::{types::*, Device};
+mod args;
+use linux_video::{types::*, Device};
+use std::io::Result;
 
 fn main() -> Result<()> {
-    let dev = Device::open("/dev/video2")?;
+    use args::{Args, Cmd};
 
-    let caps = dev.capabilities()?;
+    let args: Args = clap::Parser::parse();
 
-    println!("Capabilities: {}", caps);
-
-    println!("Controls:");
-    for ctrl in dev.controls(None) {
-        let ctrl = ctrl?;
-        println!("  {}", ctrl);
-
-        if let Some(items) = dev.control_items(&ctrl) {
-            for item in items {
-                let item = item?;
-                println!("    {}", item);
+    match args.cmd {
+        Cmd::List => {
+            for path in Device::list()? {
+                println!("{}", path?.display());
             }
         }
-    }
 
-    println!("Formats:");
-    for fmt in dev.formats(BufferType::VideoCapture) {
-        let fmt = fmt?;
-        println!("  {}", fmt);
+        Cmd::Info {
+            devices,
+            capabilities,
+            controls,
+            class,
+            formats,
+            r#type,
+            sizes,
+            intervals,
+        } => {
+            for name in devices {
+                let device = Device::open(&name)?;
 
-        for size in dev.sizes(fmt.pixel_format()) {
-            let size = size?;
-            println!("    {}", size);
+                println!("{}", name);
 
-            for size in size.sizes() {
-                println!("      {}", size);
-                for interval in dev.intervals(fmt.pixel_format(), size.width(), size.height()) {
-                    let interval = interval?;
-                    println!("        {}", interval);
+                let caps = device.capabilities()?;
+
+                if capabilities {
+                    println!("  Capabilities: {}", caps);
+                }
+
+                if controls {
+                    println!("  Controls:");
+
+                    if class.is_empty() {
+                        print_controls(&device, None)?;
+                    } else {
+                        for class in &class {
+                            print_controls(&device, Some(*class))?;
+                        }
+                    }
+                }
+
+                if formats || sizes || intervals {
+                    if r#type.is_empty() {
+                        for buffer_type in BufferType::ALL {
+                            print_formats(&device, &caps, buffer_type, sizes, intervals)?;
+                        }
+                    } else {
+                        for buffer_type in &r#type {
+                            print_formats(&device, &caps, *buffer_type, sizes, intervals)?;
+                        }
+                    }
                 }
             }
         }
     }
 
-    let mut fmt = Format::from(BufferType::VideoCapture);
-    println!("  {}", fmt);
+    Ok(())
+}
 
-    dev.get_format(&mut fmt)?;
-    println!("  {}", fmt);
+fn print_controls(device: &Device, class: Option<CtrlClass>) -> Result<()> {
+    for ctrl in device.controls(class) {
+        let ctrl = ctrl?;
+        println!("    {}", ctrl);
 
-    let mut contrast: Value<_> = dev.control(CtrlId::Contrast)?.into();
-
-    println!("contrast control: {}", &*contrast);
-
-    dev.get_control(&mut contrast)?;
-
-    println!("contrast value: {:?}", contrast.try_ref::<i32>());
-
-    let mut contrast = contrast;
-
-    contrast.try_mut::<i32>().map(|val| *val = 42);
-
-    println!("contrast value: {:?}", contrast.try_ref::<i32>());
-
-    dev.set_control(&contrast)?;
-
-    let frames = dev.queue::<In, Mmap>(In::Video, 2)?;
-
-    let mut i = 0;
-    while let Ok(frame) = frames.next() {
-        //for frame in frames {
-        //let data = frame?;
-
-        println!("#{} F: {}", i, frame);
-
-        i += 1;
-        if i > 30 {
-            break;
+        if let Some(items) = device.control_items(&ctrl) {
+            for item in items {
+                let item = item?;
+                println!("      {}", item);
+            }
         }
     }
 
-    contrast.try_mut::<i32>().map(|val| *val = 32);
+    Ok(())
+}
 
-    dev.set_control(&contrast)?;
+fn print_formats(
+    device: &Device,
+    caps: &Capability,
+    type_: BufferType,
+    sizes: bool,
+    intervals: bool,
+) -> Result<()> {
+    if type_.is_supported(caps.capabilities()) {
+        println!("  {} Formats:", type_);
+
+        for fmt in device.formats(type_) {
+            let fmt = fmt?;
+            println!("    {}", fmt);
+
+            if sizes || intervals {
+                for size in device.sizes(fmt.pixel_format()) {
+                    let size = size?;
+                    println!("      {}", size);
+
+                    for size in size.sizes() {
+                        println!("        {}", size);
+
+                        if intervals {
+                            for interval in
+                                device.intervals(fmt.pixel_format(), size.width(), size.height())
+                            {
+                                let interval = interval?;
+                                println!("          {}", interval);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Ok(())
 }

@@ -261,11 +261,13 @@ enum_impl! {
         SetCsc = 0x2,
     }
 
-    mask CaptureCapabilityFlag {
+    mask IoCapabilityFlag {
         TemperFrame = 0x1000,
+        HighQuality = 0x0001,
     }
 
-    mask CaptureModeFlag {
+    enum IoMode {
+        Defaut = 0,
         HighQuality = 1,
     }
 
@@ -1460,7 +1462,7 @@ enum_impl! {
         FrameSync,
         SourceChange,
         MotionDet,
-        PrivateStart = 0x08000000,
+        //PrivateStart = 0x08000000,
     }
 
     mask EventCtrlChangeFlag {
@@ -1607,13 +1609,25 @@ impl ColorSpace {
     /// Determine how [ColorSpace::Default] should map to a proper colorspace.
     /// This depends on whether this is a SDTV image (use SMPTE 170M), an
     /// HDTV image (use Rec. 709), or something else (use sRGB).
-    pub fn map_default(is_sdtv: bool, is_hdtv: bool) -> Self {
+    pub fn new_default(is_sdtv: bool, is_hdtv: bool) -> Self {
         if is_sdtv {
             Self::Smpte170M
         } else if is_hdtv {
             Self::Rec709
         } else {
             Self::Srgb
+        }
+    }
+}
+
+impl From<crate::FourCc> for ColorSpace {
+    fn from(pixfmt: crate::FourCc) -> Self {
+        if pixfmt.is_rgb() {
+            Self::Srgb
+        } else if pixfmt.is_ycbcr() {
+            Self::Rec709
+        } else {
+            Self::Smpte170M
         }
     }
 }
@@ -1651,7 +1665,7 @@ impl Quantization {
     /// This depends on whether the image is RGB or not, the colorspace.
     /// The Y'CbCr encoding is not used anymore, but is still there for backwards
     /// compatibility.
-    pub fn map_default(is_rgb_or_hsv: bool, colsp: ColorSpace) -> Self {
+    pub fn new_default(is_rgb_or_hsv: bool, colsp: ColorSpace) -> Self {
         if is_rgb_or_hsv || matches!(colsp, ColorSpace::Jpeg) {
             Self::FullRange
         } else {

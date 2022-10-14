@@ -1,12 +1,12 @@
 [package]
-name = "v4l2-core"
+name = "linux-video-core"
 description = "Linux V4L2 device interfacing"
 version = "0.1.0"
 authors = ["K. <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
 categories = ["os", "os::linux-apis"]
-keywords = ["V4L", "V4L2", "Linux", "ioctl"]
+keywords = ["v4l", "v4l2", "video", "linux", "ioctl"]
 edition = "2021"
 
 [dependencies.bitmask-enum]
@@ -24,7 +24,7 @@ version = "0.1"
 version = "0.6"
 
 [dependencies.clap]
-version = "3"
+version = "4"
 default-features = false
 features = ["std", "derive"]
 optional = true

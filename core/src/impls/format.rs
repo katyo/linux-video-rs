@@ -174,18 +174,23 @@ impl core::fmt::Display for MetaFormat {
 
 impl core::fmt::Display for Window {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        todo!()
+        // TODO:
+        self.w.fmt(f)?;
+        ' '.fmt(f)?;
+        self.field.fmt(f)?;
+        " !".fmt(f)?;
+        self.chromakey.fmt(f)
     }
 }
 
 impl core::fmt::Display for VbiFormat {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut core::fmt::Formatter) -> core::fmt::Result {
         todo!()
     }
 }
 
 impl core::fmt::Display for SlicedVbiFormat {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut core::fmt::Formatter) -> core::fmt::Result {
         todo!()
     }
 }

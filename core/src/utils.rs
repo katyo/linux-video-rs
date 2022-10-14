@@ -1,6 +1,7 @@
 use crate::{Error, Result};
 
-use std::{io, mem::size_of_val, str};
+use core::str;
+use std::io;
 
 #[inline(always)]
 pub fn invalid_input(msg: &'static str) -> Error {
@@ -11,28 +12,6 @@ pub fn invalid_input(msg: &'static str) -> Error {
 pub fn invalid_data(msg: &'static str) -> Error {
     Error::new(io::ErrorKind::InvalidData, msg)
 }
-
-#[inline(always)]
-pub fn check_len_str<T: ?Sized>(slice: &str, val: &T) -> Result<()> {
-    if slice.as_bytes().len() /* \0 */ < size_of_val(val) {
-        Ok(())
-    } else {
-        Err(invalid_input("String too long"))
-    }
-}
-
-/*
-#[inline(always)]
-pub fn set_str<const N: usize>(dst: &mut [u8; N], src: &str) -> Result<()> {
-    check_len_str(src, dst)?;
-
-    let src = src.as_bytes();
-    dst[..src.len()].copy_from_slice(src);
-    dst[src.len()] = 0;
-
-    Ok(())
-}
-*/
 
 #[inline(always)]
 fn is_null(src: &u8) -> bool {

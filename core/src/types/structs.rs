@@ -481,53 +481,244 @@ pub struct Capability {
     pub(crate) reserved: [u32; 3],
 }
 
-/// Pixel format
+/// Single-planar pixel format
+///
+/// Applications set width and height to request an image size, drivers return
+/// the closest possible values.
+/// In case of planar formats the width and height applies to the largest plane.
+/// To avoid ambiguities drivers must return values rounded up to a multiple of
+/// the scale factor of any smaller planes. For example when the image format
+/// is YUV 4:2:0, width and height must be multiples of two.
+///
+/// For compressed formats that contain the resolution information encoded inside
+/// the stream, when fed to a stateful mem2mem decoder, the fields may be zero to
+/// rely on the decoder to detect the right values. For more details see
+/// Memory-to-Memory Stateful Video Decoder Interface and format descriptions.
+///
+/// For compressed formats on the capture side of a stateful mem2mem encoder, the
+/// ields must be zero, since the coded size is expected to be calculated internally
+/// by the encoder itself, based on the OUTPUT side. For more details see
+/// Memory-to-Memory Stateful Video Encoder Interface and format descriptions.
+///
 #[repr(C)]
 #[derive(Copy, Clone, CopyGetters, Setters)]
 pub struct PixFormat {
-    /// Width in pixels
+    /// Image width in pixels
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) width: u32,
 
-    /// Height in pixels
+    /// Image height in pixels
+    ///
+    /// If field is one of [Field::Top], [Field::Bottom] or [Field::Alternate]
+    /// then height refers to the number of lines in the field, otherwise it
+    /// refers to the number of lines in the frame (which is twice the field
+    /// height for interlaced formats).
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) height: u32,
 
     /// Pixel format
+    ///
+    /// The pixel format or type of compression, set by the application.
+    /// This is a little endian four character code. V4L2 defines standard
+    /// RGB formats in RGB Formats, YUV formats in YUV Formats, and reserved
+    /// codes in Reserved Image Formats.
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) pixel_format: FourCc,
 
-    /// Field
+    /// Field order, from enum [Field].
+    ///
+    /// Video images are typically interlaced.
+    /// Applications can request to capture or output only the top or bottom
+    /// field, or both fields interlaced or sequentially stored in one buffer
+    /// or alternating in separate buffers. Drivers return the actual field
+    /// order selected. For more details on fields see Field Order.
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) field: Field,
 
-    /// Bytes per line
+    /// Distance in bytes between the leftmost pixels in two adjacent lines.
+    ///
+    /// Both applications and drivers can set bytes_per_line to request padding bytes
+    /// at the end of each line. Drivers however may ignore the value requested by the
+    /// application, returning width times bytes per pixel or a larger value required
+    /// by the hardware. That implies applications can just set this field to zero to
+    /// get a reasonable default.
+    ///
+    /// Video hardware may access padding bytes, therefore they must reside in accessible
+    /// memory. Consider cases where padding bytes after the last line of an image cross
+    /// a system page boundary. Input devices may write padding bytes, the value is
+    /// undefined. Output devices ignore the contents of padding bytes.
+    ///
+    /// When the image format is planar the bytesperline value applies to the first plane
+    /// and is divided by the same factor as the width field for the other planes.
+    /// For example the Cb and Cr planes of a YUV 4:2:0 image have half as many padding
+    /// bytes following each line as the Y plane. To avoid ambiguities drivers must return
+    /// a bytesperline value rounded up to a multiple of the scale factor.
+    ///
+    /// For compressed formats the bytesperline value makes no sense. Applications and
+    /// drivers must set this to 0 in that case.
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) bytes_per_line: u32,
 
     /// Image size
+    ///
+    /// Size in bytes of the buffer to hold a complete image, set by the driver. Usually
+    /// this is bytesperline times height. When the image consists of variable length
+    /// compressed data this is the number of bytes required by the codec to support
+    /// the worst-case compression scenario.
+    ///
+    /// The driver will set the value for uncompressed images.
+    ///
+    /// Clients are allowed to set the sizeimage field for variable length compressed data
+    /// flagged with [FmtFlag::Compressed] at fn [FmtDesc::query], but the driver may
+    /// ignore it and set the value itself, or it may modify the provided value based on
+    /// alignment requirements or minimum/maximum size requirements. If the client wants
+    /// to leave this to the driver, then it should set sizeimage to 0.
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) size_image: u32,
 
-    /// Color space
+    /// Image colorspace, from enum [ColorSpace].
+    ///
+    /// This information supplements the pixelformat and must be set by the driver for
+    /// capture streams and by the application for output streams, see Colorspaces.
+    /// If the application sets the flag [PixFmtFlag::SetCsc] then the application can
+    /// set this field for a capture stream to request a specific colorspace for the
+    /// captured image data. If the driver cannot handle requested conversion, it will
+    /// return another supported colorspace. The driver indicates that colorspace
+    /// conversion is supported by setting the flag [FmtFlag::CscColorSpace] in the
+    /// corresponding struct [FmtDesc] during enumeration. See [FmtFlag].
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) color_space: ColorSpace,
 
+    /// This field indicates whether the remaining fields of the struct [PixFormat],
+    /// also called the extended fields, are valid. When set to V4L2_PIX_FMT_PRIV_MAGIC,
+    /// it indicates that the extended fields have been correctly initialized. When set
+    /// to any other value it indicates that the extended fields contain undefined values.
+    ///
+    /// Applications that wish to use the pixel format extended fields must first ensure
+    /// that the feature is supported by querying the device for the
+    /// [CapabilityFlag::ExtPixFormat] capability. If the capability isn’t set the pixel
+    /// format extended fields are not supported and using the extended fields will lead
+    /// to undefined results.
+    ///
+    /// To use the extended fields, applications must set the priv field to
+    /// V4L2_PIX_FMT_PRIV_MAGIC, initialize all the extended fields and zero the unused
+    /// bytes of the struct v4l2_format raw_data field.
+    ///
+    /// When the priv field isn’t set to V4L2_PIX_FMT_PRIV_MAGIC drivers must act as if
+    /// all the extended fields were set to zero. On return drivers must set the priv
+    /// field to V4L2_PIX_FMT_PRIV_MAGIC and all the extended fields to applicable values.
     pub(crate) priv_: u32,
 
     /// Pixel format flags
+    ///
+    /// Flags set by the application or driver, see [PixFmtFlag].
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) flags: PixFmtFlag,
 
     pub(crate) union_: PixFormatUnion,
 
-    /// Quantization
+    /// Quantization range, from enum [Quantization].
+    ///
+    /// This information supplements the colorspace and must be set by the driver for
+    /// capture streams and by the application for output streams, see Colorspaces.
+    /// If the application sets the flag [PixFmtFlag::SetCsc] then the application can
+    /// set this field for a capture stream to request a specific quantization range for
+    /// the captured image data. If the driver cannot handle requested conversion, it will
+    /// return another supported quantization. The driver indicates that quantization
+    /// conversion is supported by setting the flag [FmtFlag::CscQuantization] in the
+    /// corresponding struct [FmtDesc] during enumeration. See [FmtFlag].
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) quantization: Quantization,
 
-    /// Transfer function
+    /// Transfer function, from enum [XferFunc].
+    ///
+    /// This information supplements the colorspace and must be set by the driver for
+    /// capture streams and by the application for output streams, see Colorspaces.
+    /// If the application sets the flag [PixFmtFlag::SetCsc] then the application
+    /// can set this field for a capture stream to request a specific transfer function
+    /// for the captured image data. If the driver cannot handle requested conversion,
+    /// it will return another supported transfer function. The driver indicates that
+    /// [XferFunc] conversion is supported by setting the flag [FmtFlag::CscXferFunc]
+    /// in the corresponding struct [FmtDesc] during enumeration. See [FmtFlag].
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) xfer_func: XferFunc,
+}
+
+impl From<FourCc> for PixFormat {
+    fn from(pixel_format: FourCc) -> Self {
+        let color_space = ColorSpace::from(pixel_format);
+        PixFormat {
+            width: 0,
+            height: 0,
+            pixel_format,
+            field: Field::None,
+            bytes_per_line: 0,
+            size_image: 0,
+            color_space,
+            priv_: 0,
+            flags: PixFmtFlag::none(),
+            union_: PixFormatUnion::new_default(pixel_format, color_space),
+            quantization: Quantization::new_default(
+                pixel_format.is_rgb() || pixel_format.is_hsv(),
+                color_space,
+            ),
+            xfer_func: color_space.into(),
+        }
+    }
+}
+
+impl PixFormat {
+    /// Get Y’CbCr encoding, from enum [YcbcrEncoding]
+    ///
+    /// This information supplements the colorspace and must be set by the driver for
+    /// capture streams and by the application for output streams, see Colorspaces.
+    /// If the application sets the flag [PixFmtFlag::SetCsc] then the application can
+    /// set this field for a capture stream to request a specific Y’CbCr encoding for
+    /// the captured image data. If the driver cannot handle requested conversion, it
+    /// will return another supported encoding. This field is ignored for HSV pixel
+    /// formats. The driver indicates that [YcbcrEncoding] conversion is supported by
+    /// setting the flag [FmtFlag::CscYcbcrEnc] in the corresponding struct [FmtDesc]
+    /// during enumeration. See [FmtFlag].
+    pub fn ycbcr_enc(&self) -> Option<YcbcrEncoding> {
+        if self.pixel_format.is_ycbcr() {
+            Some(unsafe { self.union_.ycbcr_enc })
+        } else {
+            None
+        }
+    }
+
+    /// Set Y’CbCr encoding, from enum [YcbcrEncoding]
+    pub fn set_ycbcr_enc(&mut self, ycbcr_enc: YcbcrEncoding) {
+        if self.pixel_format.is_ycbcr() {
+            self.union_.ycbcr_enc = ycbcr_enc;
+        }
+    }
+
+    /// Get HSV encoding, from enum [HsvEncoding]
+    ///
+    /// This information supplements the colorspace and must be set by the driver for
+    /// capture streams and by the application for output streams, see Colorspaces.
+    /// If the application sets the flag [PixFmtFlag::SetCsc] then the application can
+    /// set this field for a capture stream to request a specific HSV encoding for the
+    /// captured image data. If the driver cannot handle requested conversion, it will
+    /// return another supported encoding. This field is ignored for non-HSV pixel
+    /// formats. The driver indicates that hsv_enc conversion is supported by setting
+    /// the flag [FmtFlag::CscYcbcrEnc] in the corresponding struct [FmtDesc] during
+    /// enumeration. See [FmtFlag].
+    pub fn hsv_enc(&self) -> Option<HsvEncoding> {
+        if self.pixel_format.is_hsv() {
+            Some(unsafe { self.union_.hsv_enc })
+        } else {
+            None
+        }
+    }
+
+    /// Set HSV encoding, from enum [HsvEncoding]
+    pub fn set_hsv_enc(&mut self, hsv_enc: HsvEncoding) {
+        if self.pixel_format.is_hsv() {
+            self.union_.hsv_enc = hsv_enc;
+        }
+    }
 }
 
 #[repr(C)]
@@ -535,6 +726,20 @@ pub struct PixFormat {
 pub(crate) union PixFormatUnion {
     pub(crate) ycbcr_enc: YcbcrEncoding,
     pub(crate) hsv_enc: HsvEncoding,
+}
+
+impl PixFormatUnion {
+    fn new_default(pixfmt: FourCc, colorsp: ColorSpace) -> Self {
+        if pixfmt.is_hsv() {
+            Self {
+                hsv_enc: HsvEncoding::E256,
+            }
+        } else {
+            Self {
+                ycbcr_enc: colorsp.into(),
+            }
+        }
+    }
 }
 
 /// Format description
@@ -842,11 +1047,11 @@ pub struct FrameBuffer {
 pub struct FrameBufferFmt {
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) pixelformat: FourCc,
+    pub(crate) pixel_format: FourCc,
     pub(crate) field: Field,
-    pub(crate) bytesperline: u32,
-    pub(crate) sizeimage: u32,
-    pub(crate) colorspace: ColorSpace,
+    pub(crate) bytes_per_line: u32,
+    pub(crate) size_image: u32,
+    pub(crate) color_space: ColorSpace,
     pub(crate) priv_: u32,
 }
 
@@ -858,36 +1063,53 @@ pub struct Clip {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct Window {
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) w: Rect,
-    pub(crate) field: u32,
+
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) field: Field,
+
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) chromakey: u32,
+
     pub(crate) clips: *mut Clip,
-    pub(crate) clipcount: u32,
+    pub(crate) clip_count: u32,
+
     pub(crate) bitmap: *mut void,
     pub(crate) global_alpha: u8,
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
 pub struct CaptureParm {
-    pub(crate) capability: CaptureCapabilityFlag,
-    pub(crate) capturemode: CaptureModeFlag,
-    pub(crate) timeperframe: Fract,
-    pub(crate) extendedmode: u32,
-    pub(crate) readbuffers: u32,
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) capability: IoCapabilityFlag,
+
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) capture_mode: IoMode,
+
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) time_per_frame: Fract,
+
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) extended_mode: u32,
+
+    #[getset(get_copy = "pub", set = "pub")]
+    pub(crate) read_buffers: u32,
+
     pub(crate) reserved: [u32; 4],
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct OutputParm {
-    pub(crate) capability: u32,
-    pub(crate) outputmode: u32,
-    pub(crate) timeperframe: Fract,
-    pub(crate) extendedmode: u32,
-    pub(crate) writebuffers: u32,
+    pub(crate) capability: IoCapabilityFlag,
+    pub(crate) output_mode: IoMode,
+    pub(crate) time_per_frame: Fract,
+    pub(crate) extended_mode: u32,
+    pub(crate) write_buffers: u32,
     pub(crate) reserved: [u32; 4],
 }
 
@@ -897,7 +1119,7 @@ pub struct CropCap {
     pub(crate) type_: BufferType,
     pub(crate) bounds: Rect,
     pub(crate) defrect: Rect,
-    pub(crate) pixelaspect: Fract,
+    pub(crate) pixel_aspect: Fract,
 }
 
 #[repr(C)]
@@ -923,8 +1145,8 @@ pub struct Standard {
     pub(crate) index: u32,
     pub(crate) id: StdId,
     pub(crate) name: [u8; 24],
-    pub(crate) frameperiod: Fract,
-    pub(crate) framelines: u32,
+    pub(crate) frame_period: Fract,
+    pub(crate) frame_lines: u32,
     pub(crate) reserved: [u32; 4],
 }
 
@@ -935,16 +1157,16 @@ pub struct BtTimings {
     pub(crate) height: u32,
     pub(crate) interlaced: u32,
     pub(crate) polarities: u32,
-    pub(crate) pixelclock: u64,
-    pub(crate) hfrontporch: u32,
+    pub(crate) pixel_clock: u64,
+    pub(crate) hfront_porch: u32,
     pub(crate) hsync: u32,
-    pub(crate) hbackporch: u32,
-    pub(crate) vfrontporch: u32,
+    pub(crate) hback_porch: u32,
+    pub(crate) vfront_porch: u32,
     pub(crate) vsync: u32,
-    pub(crate) vbackporch: u32,
-    pub(crate) il_vfrontporch: u32,
+    pub(crate) vback_porch: u32,
+    pub(crate) il_vfront_porch: u32,
     pub(crate) il_vsync: u32,
-    pub(crate) il_vbackporch: u32,
+    pub(crate) il_vback_porch: u32,
     pub(crate) standards: u32,
     pub(crate) flags: DvFlag,
     pub(crate) picture_aspect: Fract,
@@ -1012,7 +1234,7 @@ pub struct Input {
     pub(crate) index: u32,
     pub(crate) name: [u8; 32],
     pub(crate) type_: InputType,
-    pub(crate) audioset: u32,
+    pub(crate) audio_set: u32,
     pub(crate) tuner: TunerType,
     pub(crate) std: StdId,
     pub(crate) status: InputStatusFlag,
@@ -1026,7 +1248,7 @@ pub struct Output {
     pub(crate) index: u32,
     pub(crate) name: [u8; 32],
     pub(crate) type_: OutputType,
-    pub(crate) audioset: u32,
+    pub(crate) audio_set: u32,
     pub(crate) modulator: u32,
     pub(crate) std: StdId,
     pub(crate) capabilities: OutputCapabilityFlag,
@@ -1040,7 +1262,7 @@ pub struct Control {
     pub(crate) value: i32,
 }
 
-#[repr(C, packed)]
+#[repr(C, align(4))]
 #[derive(Copy, Clone)]
 pub struct ExtControl {
     pub(crate) id: u32,
@@ -1599,7 +1821,7 @@ pub(crate) union FormatUnion {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct StreamParm {
-    pub(crate) type_: u32,
+    pub(crate) type_: BufferType,
     pub(crate) parm: StreamParmUnion,
 }
 
@@ -1614,16 +1836,16 @@ pub(crate) union StreamParmUnion {
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct EventVsync {
-    pub(crate) field: u8,
+    pub(crate) field: Field,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct EventCtrl {
     pub(crate) changes: EventCtrlChangeFlag,
-    pub(crate) type_: u32,
+    pub(crate) type_: EventType,
     pub(crate) union_: EventCtrlUnion,
-    pub(crate) flags: u32,
+    pub(crate) flags: CtrlFlag,
     pub(crate) minimum: i32,
     pub(crate) maximum: i32,
     pub(crate) step: i32,
@@ -1658,13 +1880,18 @@ pub struct EventMotionDet {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters)]
 pub struct Event {
+    /// Event type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: EventType,
     pub(crate) u: EventUnion,
     pub(crate) pending: u32,
     pub(crate) sequence: u32,
     pub(crate) timestamp: TimeSpec,
+
+    /// Event type
+    #[getset(get_copy = "pub")]
     pub(crate) id: u32,
     pub(crate) reserved: [u32; 8],
 }

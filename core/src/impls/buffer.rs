@@ -1,10 +1,9 @@
-use crate::{calls, types::*, utils, Internal, Result};
+use crate::{calls, types::*, Internal, IsTimestamp, Result};
 use core::{
     marker::PhantomData,
     mem::{ManuallyDrop, MaybeUninit},
 };
 use getset::CopyGetters;
-use nix::sys::time::TimeValLike;
 use std::{
     os::unix::io::RawFd,
     sync::{Mutex, MutexGuard},
@@ -12,8 +11,7 @@ use std::{
 
 /// Direction types
 pub trait Direction {
-    //const TYPES: &'static [BufferType];
-    fn buffer_type(&self) -> BufferType;
+    fn buffer_type(content: ContentType) -> BufferType;
 }
 
 macro_rules! direction_impl {
@@ -21,33 +19,22 @@ macro_rules! direction_impl {
         $($(#[$($variant_meta:meta)*])* $content_type:ident = $buffer_type:ident,)*
     })*) => {
         $(
-            enum_impl! {
-                $(#[$($meta)*])*
-                enum $type {
-                    $(
-                        $(#[$($variant_meta)*])*
-                        $content_type = BufferType::$buffer_type as u32,
-                    )*
-                }
-            }
-
-            impl From<$type> for BufferType {
-                fn from(type_: $type) -> Self {
-                    unsafe { core::mem::transmute(type_) }
-                }
-            }
+            $(#[$($meta)*])*
+            pub struct $type;
 
             impl Direction for $type {
-                //const TYPES: &'static [BufferType] = &[$(BufferType::$buf_types),*];
-                fn buffer_type(&self) -> BufferType {
-                    (*self).into()
+                fn buffer_type(content: ContentType) -> BufferType {
+                    match content {
+                        $(
+                            ContentType::$content_type => BufferType::$buffer_type,
+                        )*
+                    }
                 }
             }
         )*
     };
 }
 
-/*
 enum_impl! {
     /// Buffer content type
     enum ContentType {
@@ -60,7 +47,27 @@ enum_impl! {
         Meta,
     }
 }
-*/
+
+impl ContentType {
+    /// All content types
+    pub const ALL: [Self; 7] = [
+        Self::Video,
+        Self::Vbi,
+        Self::SlicedVbi,
+        Self::VideoOverlay,
+        Self::VideoMplane,
+        Self::Sdr,
+        Self::Meta,
+    ];
+
+    /// All video types
+    pub const VIDEO: [Self; 3] = [Self::Video, Self::VideoOverlay, Self::VideoMplane];
+
+    /// Is video type
+    pub fn is_video(self) -> bool {
+        matches!(self, Self::Video | Self::VideoOverlay | Self::VideoMplane)
+    }
+}
 
 direction_impl! {
     /// Capture (input direction)
@@ -87,16 +94,124 @@ direction_impl! {
     }
 }
 
+impl BufferType {
+    /// All buffer types
+    pub const ALL: [Self; 14] = [
+        Self::VideoCapture,
+        Self::VbiCapture,
+        Self::SlicedVbiCapture,
+        Self::VideoOverlay,
+        Self::VideoCaptureMplane,
+        Self::SdrCapture,
+        Self::MetaCapture,
+        Self::VideoOutput,
+        Self::VbiOutput,
+        Self::SlicedVbiOutput,
+        Self::VideoOutputOverlay,
+        Self::VideoOutputMplane,
+        Self::SdrOutput,
+        Self::MetaOutput,
+    ];
+
+    /// Capture buffer types
+    pub const CAPTURE: [Self; 7] = [
+        Self::VideoCapture,
+        Self::VbiCapture,
+        Self::SlicedVbiCapture,
+        Self::VideoOverlay,
+        Self::VideoCaptureMplane,
+        Self::SdrCapture,
+        Self::MetaCapture,
+    ];
+
+    /// Output buffer types
+    pub const OUTPUT: [Self; 7] = [
+        Self::VideoOutput,
+        Self::VbiOutput,
+        Self::SlicedVbiOutput,
+        Self::VideoOutputOverlay,
+        Self::VideoOutputMplane,
+        Self::SdrOutput,
+        Self::MetaOutput,
+    ];
+
+    /// Video buffer types
+    pub const VIDEO: [Self; 6] = [
+        Self::VideoCapture,
+        Self::VideoOverlay,
+        Self::VideoCaptureMplane,
+        Self::VideoOutput,
+        Self::VideoOutputOverlay,
+        Self::VideoOutputMplane,
+    ];
+
+    /// Vbi buffer types
+    pub const VBI: [Self; 4] = [
+        Self::VbiCapture,
+        Self::SlicedVbiCapture,
+        Self::VbiOutput,
+        Self::SlicedVbiOutput,
+    ];
+
+    /// Sdr buffer types
+    pub const SDR: [Self; 2] = [Self::SdrCapture, Self::SdrOutput];
+
+    /// Meta buffer types
+    pub const META: [Self; 2] = [Self::MetaCapture, Self::MetaOutput];
+
+    /// Single-planar video buffer types
+    pub const VIDEO_SPLANE: [Self; 2] = [Self::VideoCapture, Self::VideoOutput];
+
+    /// Multi-planar video buffer types
+    pub const VIDEO_MPLANE: [Self; 2] = [Self::VideoCaptureMplane, Self::VideoOutputMplane];
+
+    /// Overlay video buffer types
+    pub const VIDEO_OVERLAY: [Self; 2] = [Self::VideoOverlay, Self::VideoOutputOverlay];
+
+    /// Check that buffer type is supported according to capabilities
+    pub fn is_supported(self, capabilities: CapabilityFlag) -> bool {
+        match self {
+            Self::VideoCapture => capabilities.contains(CapabilityFlag::VideoCapture),
+            Self::VbiCapture => capabilities.contains(CapabilityFlag::VbiCapture),
+            Self::SlicedVbiCapture => capabilities.contains(CapabilityFlag::SlicedVbiCapture),
+            Self::VideoOverlay => capabilities.contains(CapabilityFlag::VideoOverlay),
+            Self::VideoCaptureMplane => capabilities.contains(CapabilityFlag::VideoCaptureMplane),
+            Self::SdrCapture => capabilities.contains(CapabilityFlag::SdrCapture),
+            Self::MetaCapture => capabilities.contains(CapabilityFlag::MetaCapture),
+            Self::VideoOutput => capabilities.contains(CapabilityFlag::VideoOutput),
+            Self::VbiOutput => capabilities.contains(CapabilityFlag::VbiOutput),
+            Self::SlicedVbiOutput => capabilities.contains(CapabilityFlag::SlicedVbiOutput),
+            Self::VideoOutputOverlay => capabilities.contains(CapabilityFlag::VideoOutputOverlay),
+            Self::VideoOutputMplane => capabilities.contains(CapabilityFlag::VideoOutputMplane),
+            Self::SdrOutput => capabilities.contains(CapabilityFlag::SdrOutput),
+            Self::MetaOutput => capabilities.contains(CapabilityFlag::MetaOutput),
+        }
+    }
+
+    /// Get corresponding content type
+    pub fn content(&self) -> ContentType {
+        match self {
+            Self::VideoCapture | Self::VideoOutput => ContentType::Video,
+            Self::VbiCapture | Self::VbiOutput => ContentType::Vbi,
+            Self::SlicedVbiCapture | Self::SlicedVbiOutput => ContentType::SlicedVbi,
+            Self::VideoOverlay | Self::VideoOutputOverlay => ContentType::VideoOverlay,
+            Self::VideoCaptureMplane | Self::VideoOutputMplane => ContentType::VideoMplane,
+            Self::SdrCapture | Self::SdrOutput => ContentType::Sdr,
+            Self::MetaCapture | Self::MetaOutput => ContentType::Meta,
+        }
+    }
+}
+
 impl Internal<BufferType> {
     /// Start stream
-    pub fn stream_on(&self, fd: RawFd) -> Result<()> {
+    pub fn stream_on(self, fd: RawFd) -> Result<()> {
         let type_ = *self.as_ref() as int;
 
         unsafe_call!(calls::stream_on(fd, &type_).map(|_| ()))
     }
 
     /// Stop stream
-    pub fn stream_off(&self, fd: RawFd) -> Result<()> {
+    pub fn stream_off(self, fd: RawFd) -> Result<()> {
         let type_ = *self.as_ref() as int;
 
         unsafe_call!(calls::stream_off(fd, &type_).map(|_| ()))
@@ -118,59 +233,15 @@ impl Internal<RequestBuffers> {
     }
 }
 
-/// Something which can be used as timestamp
-pub trait IsTimestamp {
-    /// Convert from timeval
-    fn from_timestamp(timeval: TimeVal) -> Self;
-
-    /// Convert into timeval
-    fn into_timestamp(self) -> TimeVal;
-}
-
-impl IsTimestamp for TimeVal {
-    fn from_timestamp(timeval: TimeVal) -> Self {
-        timeval
-    }
-
-    fn into_timestamp(self) -> TimeVal {
-        self
-    }
-}
-
-impl IsTimestamp for core::time::Duration {
-    fn from_timestamp(timeval: TimeVal) -> Self {
-        core::time::Duration::from_micros(timeval.num_microseconds() as _)
-    }
-
-    fn into_timestamp(self) -> TimeVal {
-        TimeVal::microseconds(self.as_micros() as _)
-    }
-}
-
-impl IsTimestamp for std::time::SystemTime {
-    fn from_timestamp(timeval: TimeVal) -> Self {
-        std::time::SystemTime::UNIX_EPOCH
-            + core::time::Duration::from_micros(timeval.num_microseconds() as _)
-    }
-
-    fn into_timestamp(self) -> TimeVal {
-        TimeVal::microseconds(
-            self.duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_micros() as _,
-        )
-    }
-}
-
 impl Buffer {
     /// Get timestamp
     pub fn timestamp<T: IsTimestamp>(&self) -> T {
-        T::from_timestamp(self.timestamp)
+        T::from_time_val(self.timestamp)
     }
 
     /// Set timestamp
     pub fn set_timestamp<T: IsTimestamp>(&mut self, time: T) {
-        self.timestamp = time.into_timestamp();
+        self.timestamp = time.into_time_val();
     }
 
     /// Buffer has time code
@@ -329,6 +400,7 @@ impl Method for UserPtr {
         Ok(pointer)
     }
 
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn done(buffer: &Buffer, pointer: *mut u8) {
         let _ = unsafe { Vec::<u8>::from_raw_parts(pointer, 0, buffer.length as _) };
     }
@@ -360,10 +432,10 @@ impl<Met: Method> core::ops::DerefMut for BufferState<Met> {
 
 impl<Met: Method> BufferState<Met> {
     fn new(fd: RawFd, buffer: Internal<Buffer>) -> Result<Self> {
-        Met::init(&buffer, fd)?;
+        let pointer = Met::init(&buffer, fd)?;
 
         let data = Self {
-            pointer: core::ptr::null_mut(),
+            pointer,
             buffer,
             _phantom: PhantomData,
         };
@@ -412,6 +484,11 @@ pub struct QueueData<Dir, Met: Method> {
 }
 
 impl<Dir, Met: Method> QueueData<Dir, Met> {
+    /// Queue is empty
+    pub fn is_empty(&self) -> bool {
+        self.buffers.is_empty()
+    }
+
     /// Get actual number of buffers
     pub fn len(&self) -> usize {
         self.buffers.len()
@@ -420,11 +497,11 @@ impl<Dir, Met: Method> QueueData<Dir, Met> {
 
 impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Create buffers queue
-    pub fn new(fd: RawFd, type_: Dir, count: u32) -> Result<Self>
+    pub fn new(fd: RawFd, type_: ContentType, count: u32) -> Result<Self>
     where
         Dir: Direction,
     {
-        let type_ = type_.buffer_type();
+        let type_ = Dir::buffer_type(type_);
 
         let request_buffers = Internal::<RequestBuffers>::request(fd, type_, Met::MEMORY, count)?;
 
@@ -555,7 +632,12 @@ impl<'r, Dir, Met: Method> BufferData<'r, Dir, Met> {
         }
     }
 
-    /// Get curren length of buffer in bytes
+    /// Check no used bytes in buffer
+    pub fn is_empty(&self) -> bool {
+        self.data.buffer.bytes_used == 0
+    }
+
+    /// Get used data of buffer in bytes
     pub fn len(&self) -> usize {
         self.data.buffer.bytes_used as _
     }

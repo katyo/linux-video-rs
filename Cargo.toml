@@ -1,24 +1,23 @@
 [package]
-name = "v4l2"
+name = "linux-video"
 description = "Linux V4L2 device interfacing"
 version = "0.1.0"
 authors = ["K. <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
 categories = ["os", "os::linux-apis"]
-keywords = ["V4L", "V4L2", "Linux", "ioctl"]
+keywords = ["v4l", "v4l2", "video", "linux", "ioctl"]
 edition = "2021"
 
 [workspace]
 members = ["core", "cli"]
-#members = ["core", "tokio", "async-std", "cli", "cli/tokio", "cli/async-std"]
 
-[dependencies.v4l2-core]
+[dependencies.linux-video-core]
 path = "core"
 version = "0.1.0"
 default-features = false
 
 [features]
 default = []
-#clap = ["v4l2-core/clap"]
-#serde = ["v4l2-core/serde"]
+clap = ["linux-video-core/clap"]
+serde = ["linux-video-core/serde"]
