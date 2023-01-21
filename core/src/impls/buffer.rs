@@ -2,6 +2,7 @@ use crate::{calls, types::*, Internal, IsTimestamp, Result};
 use core::{
     marker::PhantomData,
     mem::{ManuallyDrop, MaybeUninit},
+    num::NonZeroUsize,
 };
 use getset::CopyGetters;
 use std::{
@@ -366,8 +367,8 @@ impl Method for Mmap {
         use nix::sys::mman::{mmap, MapFlags, ProtFlags};
 
         unsafe_call!(mmap(
-            core::ptr::null_mut(),
-            buffer.length as _,
+            None,
+            NonZeroUsize::new(buffer.length as _).unwrap(),
             ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
             MapFlags::MAP_SHARED,
             fd,
