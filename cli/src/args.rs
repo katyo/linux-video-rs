@@ -42,6 +42,10 @@ pub enum Cmd {
         #[arg(short = 'i', long, value_enum)]
         intervals: bool,
 
+        /// Show all available info (shortcut for -aofsi)
+        #[arg(short = 'l', long)]
+        all: bool,
+
         /// Only controls of specified classes
         #[arg(short, long, value_enum)]
         class: Vec<types::CtrlClass>,

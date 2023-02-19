@@ -16,23 +16,32 @@ fn main() -> Result<()> {
 
         Cmd::Info {
             devices,
-            capabilities,
-            controls,
+            mut capabilities,
+            mut controls,
             class,
-            formats,
+            mut formats,
             r#type,
-            sizes,
-            intervals,
+            mut sizes,
+            mut intervals,
+            all,
         } => {
+            if all {
+              capabilities = true;
+              controls = true;
+              formats = true;
+              sizes = true;
+              intervals = true;
+            }
+
             for name in devices {
                 let device = Device::open(&name)?;
 
-                println!("{}", name);
+                println!("{name}");
 
                 let caps = device.capabilities()?;
 
                 if capabilities {
-                    println!("  Capabilities: {}", caps);
+                    println!("  Capabilities: {caps}");
                 }
 
                 if controls {
@@ -68,12 +77,12 @@ fn main() -> Result<()> {
 fn print_controls(device: &Device, class: Option<CtrlClass>) -> Result<()> {
     for ctrl in device.controls(class) {
         let ctrl = ctrl?;
-        println!("    {}", ctrl);
+        println!("    {ctrl}");
 
         if let Some(items) = device.control_items(&ctrl) {
             for item in items {
                 let item = item?;
-                println!("      {}", item);
+                println!("      {item}");
             }
         }
     }
@@ -89,26 +98,26 @@ fn print_formats(
     intervals: bool,
 ) -> Result<()> {
     if type_.is_supported(caps.capabilities()) {
-        println!("  {} Formats:", type_);
+        println!("  {type_} Formats:");
 
         for fmt in device.formats(type_) {
             let fmt = fmt?;
-            println!("    {}", fmt);
+            println!("    {fmt}");
 
             if sizes || intervals {
                 for size in device.sizes(fmt.pixel_format()) {
                     let size = size?;
-                    println!("      {}", size);
+                    println!("      {size}");
 
                     for size in size.sizes() {
-                        println!("        {}", size);
+                        println!("        {size}");
 
                         if intervals {
                             for interval in
                                 device.intervals(fmt.pixel_format(), size.width(), size.height())
                             {
                                 let interval = interval?;
-                                println!("          {}", interval);
+                                println!("          {interval}");
                             }
                         }
                     }
