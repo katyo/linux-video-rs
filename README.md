@@ -22,11 +22,9 @@ Enumerating devices:
 use linux_video::Device;
 
 fn main() -> std::io::Result<()> {
-    let devs = Device::list()?;
+    let mut devs = Device::list()?;
 
-    for path in devs {
-        let path = path?;
-
+    while let Some(path) = devs.fetch_next()? {
         let dev = Device::open(&path)?;
 
         let caps = dev.capabilities()?;
@@ -51,13 +49,13 @@ fn main() -> std::io::Result<()> {
     println!("Capabilities: {}", caps);
 
     println!("Controls:");
-    for ctrl in dev.controls(None) {
-        let ctrl = ctrl?;
+    let mut controls = dev.controls(None);
+
+    while let Some(ctrl) = controls.fetch_next()? {
         println!("  {}", ctrl);
 
-        if let Some(items) = dev.control_items(&ctrl) {
-            for item in items {
-                let item = item?;
+        if let Some(mut items) = dev.control_items(&ctrl) {
+            while let Some(item) = items.fetch_next()? {
                 println!("    {}", item);
             }
         }
@@ -80,19 +78,22 @@ fn main() -> std::io::Result<()> {
     for type_ in BufferType::ALL {
         if type_.is_supported(caps.capabilities()) {
             println!("{} formats:", type_);
-            for fmt in dev.formats(type_) {
-                let fmt = fmt?;
+            let mut fmts = dev.formats(type_);
+
+            if let Some(fmt) = fmts.fetch_next()? {
                 println!("  {}", fmt);
 
                 if type_.content().is_video() {
-                    for size in dev.sizes(fmt.pixel_format()) {
-                        let size = size?;
+                    let mut sizes = dev.sizes(fmt.pixel_format());
+
+                    while let Some(size) = sizes.fetch_next()? {
                         println!("    {}", size);
 
                         for size in size.sizes() {
                             println!("      {}", size);
-                            for interval in dev.intervals(fmt.pixel_format(), size.width(), size.height()) {
-                                let interval = interval?;
+                            let mut intervals = dev.intervals(fmt.pixel_format(), size.width(), size.height());
+
+                            while let Some(interval) = intervals.fetch_next()? {
                                 println!("        {}", interval);
                             }
                         }

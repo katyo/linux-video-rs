@@ -469,7 +469,7 @@ impl<Met: Method> BufferState<Met> {
 
 impl<Met: Method> Drop for BufferState<Met> {
     fn drop(&mut self) {
-        Met::done(&mut self.buffer, self.pointer)
+        Met::done(&self.buffer, self.pointer)
     }
 }
 

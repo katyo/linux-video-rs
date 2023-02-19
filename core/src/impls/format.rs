@@ -26,6 +26,8 @@ impl From<BufferType> for Format {
     }
 }
 
+unsafe impl Send for Format {}
+
 impl Format {
     /// Create from value
     pub fn new<T: IsFormatData>(type_: BufferType, data: T) -> Option<Self> {

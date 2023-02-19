@@ -58,7 +58,7 @@ impl Device {
     }
 
     /// Get control menu items
-    pub fn control_items<'i, 'c>(&'i self, control: &'c Control) -> Option<MenuItems<'i>> {
+    pub fn control_items(&self, control: &Control) -> Option<MenuItems<'_>> {
         if control.is_menu() {
             Some(MenuItems {
                 device: self,
@@ -109,7 +109,7 @@ impl Device {
 
     /// Try format without set it
     pub fn try_format(&self, fmt: &Format) -> Result<()> {
-        Internal::from(fmt).set(self.as_raw_fd())
+        Internal::from(fmt).try_(self.as_raw_fd())
     }
 
     /// Get supported frame sizes
@@ -142,6 +142,7 @@ impl Device {
     }
 }
 
+/// The interface to get available devices
 pub struct Devices {
     reader: std::fs::ReadDir,
 }
@@ -150,79 +151,63 @@ impl Devices {
     fn new() -> Result<Self> {
         std::fs::read_dir("/dev").map(|reader| Devices { reader })
     }
-}
 
-impl Iterator for Devices {
-    type Item = Result<PathBuf>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    /// Get path of the next device
+    pub fn fetch_next(&mut self) -> Result<Option<PathBuf>> {
         use std::os::unix::fs::FileTypeExt;
 
-        loop {
-            if let Some(entry) = self.reader.next() {
-                match entry {
-                    Ok(entry) => {
-                        if let Some(file_name) = entry.file_name().to_str() {
-                            if file_name.starts_with("video") {
-                                match entry.file_type() {
-                                    Ok(file_type) => {
-                                        if file_type.is_char_device() {
-                                            return Some(Ok(entry.path()));
-                                        }
-                                    }
-                                    Err(error) => return Some(Err(error)),
-                                }
-                            }
-                        }
+        for entry in self.reader.by_ref() {
+            let entry = entry?;
+            if let Some(file_name) = entry.file_name().to_str() {
+                if check_dev_name(file_name).is_some() {
+                    let file_type = entry.file_type()?;
+                    if file_type.is_char_device() {
+                        return Ok(Some(entry.path()));
                     }
-                    Err(error) => return Some(Err(error)),
                 }
-            } else {
-                return None;
             }
         }
+
+        Ok(None)
     }
 }
 
+/// The interface to get device controls
 pub struct Controls<'i> {
     device: &'i Device,
     class: Option<CtrlClass>,
     last_id: u32,
 }
 
-impl<'i> Iterator for Controls<'i> {
-    type Item = Result<Control>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'i> Controls<'i> {
+    /// Get next control
+    pub fn fetch_next(&mut self) -> Result<Option<Control>> {
         if self.last_id == u32::MAX {
-            return None;
+            return Ok(None);
         }
 
-        match Internal::<QueryExtCtrl>::query_next_fallback(self.device.as_raw_fd(), self.last_id) {
-            Ok(Some(ctrl)) => {
-                if self
-                    .class
-                    .map(|class| class.fast_match(ctrl.id()))
-                    .unwrap_or(true)
-                {
-                    self.last_id = ctrl.id();
-                    Some(Ok(Control { ctrl }))
-                } else {
-                    self.last_id = u32::MAX;
-                    None
-                }
-            }
-            Ok(None) => {
+        if let Some(ctrl) =
+            Internal::<QueryExtCtrl>::query_next_fallback(self.device.as_raw_fd(), self.last_id)?
+        {
+            if self
+                .class
+                .map(|class| class.fast_match(ctrl.id()))
+                .unwrap_or(true)
+            {
+                self.last_id = ctrl.id();
+                Ok(Some(Control { ctrl }))
+            } else {
                 self.last_id = u32::MAX;
-                None
+                Ok(None)
             }
-            Err(error) => Some(Err(error)),
+        } else {
+            self.last_id = u32::MAX;
+            Ok(None)
         }
     }
 }
 
-impl<'i> core::iter::FusedIterator for Controls<'i> {}
-
+/// The control access interface
 pub struct Control {
     ctrl: Internal<QueryExtCtrl>,
 }
@@ -247,6 +232,7 @@ impl core::fmt::Display for Control {
     }
 }
 
+/// The interface to get menu items
 pub struct MenuItems<'i> {
     device: &'i Device,
     ctrl_type: CtrlType,
@@ -254,89 +240,76 @@ pub struct MenuItems<'i> {
     index_iter: core::ops::RangeInclusive<u32>,
 }
 
-impl<'i> Iterator for MenuItems<'i> {
-    type Item = Result<MenuItem>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'i> MenuItems<'i> {
+    /// Get next menu control item
+    pub fn fetch_next(&mut self) -> Result<Option<MenuItem>> {
         for index in &mut self.index_iter {
             if let Some(item) = Internal::<MenuItem>::query(
                 self.device.as_raw_fd(),
                 self.ctrl_type,
                 self.ctrl_id,
                 index,
-            )
-            .transpose()
-            {
-                return Some(item.map(Internal::into_inner));
+            )? {
+                return Ok(Some(item.into_inner()));
             }
         }
-        None
+        Ok(None)
     }
 }
 
-impl<'i> core::iter::FusedIterator for MenuItems<'i> {}
-
+/// The interface to get format descriptions
 pub struct FmtDescs<'i> {
     device: &'i Device,
     type_: BufferType,
     index: u32,
 }
 
-impl<'i> Iterator for FmtDescs<'i> {
-    type Item = Result<FmtDesc>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'i> FmtDescs<'i> {
+    /// Fetch next format description
+    pub fn fetch_next(&mut self) -> Result<Option<FmtDesc>> {
         if self.index == u32::MAX {
-            return None;
+            return Ok(None);
         }
 
-        match Internal::<FmtDesc>::query(self.device.as_raw_fd(), self.index, self.type_) {
-            Ok(Some(desc)) => {
-                self.index += 1;
-                Some(Ok(desc.into_inner()))
-            }
-            Ok(None) => {
-                self.index = u32::MAX;
-                None
-            }
-            Err(error) => Some(Err(error)),
+        if let Some(desc) =
+            Internal::<FmtDesc>::query(self.device.as_raw_fd(), self.index, self.type_)?
+        {
+            self.index += 1;
+            Ok(Some(desc.into_inner()))
+        } else {
+            self.index = u32::MAX;
+            Ok(None)
         }
     }
 }
 
-impl<'i> core::iter::FusedIterator for FmtDescs<'i> {}
-
+/// The interface to get drame sizes
 pub struct FrmSizes<'i> {
     device: &'i Device,
     pixel_format: FourCc,
     index: u32,
 }
 
-impl<'i> Iterator for FrmSizes<'i> {
-    type Item = Result<FrmSizeEnum>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'i> FrmSizes<'i> {
+    /// Get next frame size value
+    pub fn fetch_next(&mut self) -> Result<Option<FrmSizeEnum>> {
         if self.index == u32::MAX {
-            return None;
+            return Ok(None);
         }
 
-        match Internal::<FrmSizeEnum>::query(self.device.as_raw_fd(), self.index, self.pixel_format)
+        if let Some(size) =
+            Internal::<FrmSizeEnum>::query(self.device.as_raw_fd(), self.index, self.pixel_format)?
         {
-            Ok(Some(desc)) => {
-                self.index += 1;
-                Some(Ok(desc.into_inner()))
-            }
-            Ok(None) => {
-                self.index = u32::MAX;
-                None
-            }
-            Err(error) => Some(Err(error)),
+            self.index += 1;
+            Ok(Some(size.into_inner()))
+        } else {
+            self.index = u32::MAX;
+            Ok(None)
         }
     }
 }
 
-impl<'i> core::iter::FusedIterator for FrmSizes<'i> {}
-
+/// The interface to get frame intervals
 pub struct FrmIvals<'i> {
     device: &'i Device,
     pixel_format: FourCc,
@@ -345,35 +318,28 @@ pub struct FrmIvals<'i> {
     index: u32,
 }
 
-impl<'i> Iterator for FrmIvals<'i> {
-    type Item = Result<FrmIvalEnum>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'i> FrmIvals<'i> {
+    /// Get next frame interval value
+    pub fn fetch_next(&mut self) -> Result<Option<FrmIvalEnum>> {
         if self.index == u32::MAX {
-            return None;
+            return Ok(None);
         }
 
-        match Internal::<FrmIvalEnum>::query(
+        if let Some(ival) = Internal::<FrmIvalEnum>::query(
             self.device.as_raw_fd(),
             self.index,
             self.pixel_format,
             self.width,
             self.height,
-        ) {
-            Ok(Some(desc)) => {
-                self.index += 1;
-                Some(Ok(desc.into_inner()))
-            }
-            Ok(None) => {
-                self.index = u32::MAX;
-                None
-            }
-            Err(error) => Some(Err(error)),
+        )? {
+            self.index += 1;
+            Ok(Some(ival.into_inner()))
+        } else {
+            self.index = u32::MAX;
+            Ok(None)
         }
     }
 }
-
-impl<'i> core::iter::FusedIterator for FrmIvals<'i> {}
 
 /// Data I/O queue
 pub struct Stream<Dir, Met: Method> {
@@ -401,10 +367,36 @@ impl<Dir, Met: Method> Stream<Dir, Met> {
         Ok(Self { file, queue })
     }
 
+    /// Get next frame to write or read
     pub fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
         let fd = self.file.as_raw_fd();
 
         self.queue.enqueue_all(fd)?;
         self.queue.dequeue(fd)
     }
+}
+
+macro_rules! iter_impls {
+    ($($type:ident $(<$($type_params:lifetime),*>)* => $item_type:ident,)*) => {
+        $(
+            impl $(<$($type_params),*>)* Iterator for $type $(<$($type_params),*>)* {
+                type Item = Result<$item_type>;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    self.fetch_next().transpose()
+                }
+            }
+
+            impl $(<$($type_params),*>)* core::iter::FusedIterator for $type $(<$($type_params),*>)* {}
+        )*
+    };
+}
+
+iter_impls! {
+    Devices => PathBuf,
+    Controls<'i> => Control,
+    MenuItems<'i> => MenuItem,
+    FmtDescs<'i> => FmtDesc,
+    FrmSizes<'i> => FrmSizeEnum,
+    FrmIvals<'i> => FrmIvalEnum,
 }

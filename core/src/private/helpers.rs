@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{Result, ContentType};
 use std::{
     fs::{File, OpenOptions},
     os::unix::fs::{FileTypeExt, OpenOptionsExt},
@@ -30,4 +30,18 @@ pub fn open(path: impl AsRef<Path>, nonblock: bool) -> Result<File> {
         .write(true)
         .custom_flags(if nonblock { O_NONBLOCK } else { 0 })
         .open(path)
+}
+
+/// Check video device name prefix
+pub fn check_dev_name(name: impl AsRef<str>) -> Option<ContentType> {
+    let name = name.as_ref();
+    if name.starts_with("video") {
+        Some(ContentType::Video)
+    } else if name.starts_with("vbi") {
+        Some(ContentType::Vbi)
+    } else if name.starts_with("radio") || name.starts_with("swradio") {
+        Some(ContentType::Sdr)
+    } else {
+        None
+    }
 }
