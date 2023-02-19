@@ -10,7 +10,7 @@ keywords = ["v4l", "v4l2", "video", "linux", "ioctl"]
 edition = "2021"
 
 [workspace]
-members = ["core", "cli"]
+members = ["core", "tokio", "cli"]
 
 [dependencies.linux-video-core]
 path = "core"

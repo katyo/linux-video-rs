@@ -1,0 +1,29 @@
+[package]
+name = "tokio-linux-video"
+description = "Linux V4L2 device interfacing with tokio"
+version = "0.1.0"
+authors = ["K. <kayo@illumium.org>"]
+license = "MIT"
+readme = "README.md"
+categories = ["os", "os::linux-apis", "asynchronous"]
+keywords = ["v4l", "v4l2", "linux", "async", "tokio"]
+edition = "2021"
+
+[dependencies.linux-video-core]
+path = "../core"
+version = "0.1.0"
+default-features = false
+
+[dependencies.tokio]
+version = "1"
+default-features = false
+features = ["fs", "io-util", "rt", "net"]
+
+[dev-dependencies.tokio]
+version = "1"
+features = ["macros", "rt-multi-thread"]
+
+[features]
+default = []
+clap = ["linux-video-core/clap"]
+serde = ["linux-video-core/serde"]
