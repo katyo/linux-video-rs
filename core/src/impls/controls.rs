@@ -45,6 +45,12 @@ impl<C: AsRef<QueryExtCtrl>> Drop for Value<C> {
     }
 }
 
+impl AsRef<QueryExtCtrl> for QueryExtCtrl {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
 impl<C: AsRef<QueryExtCtrl>> GetValue for Value<C> {
     /// Get value from device
     fn get(&mut self, fd: RawFd) -> Result<()> {

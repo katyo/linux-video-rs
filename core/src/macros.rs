@@ -26,6 +26,7 @@ macro_rules! enum_impl {
         $(#[$($meta)*])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+        #[non_exhaustive]
         #[repr($repr)]
         pub enum $type {
             $($(#[$($var_meta)*])* $var_name $(= $var_data)*,)*

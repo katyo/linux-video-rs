@@ -1,0 +1,4 @@
+[env]
+VIVID_WEBCAM = "/dev/video53"
+VIVID_HDMI_IN = "/dev/video51"
+VIVID_HDMI_OUT = "/dev/video52"

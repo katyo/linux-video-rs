@@ -17,7 +17,11 @@ path = "core"
 version = "0.1.0"
 default-features = false
 
+[dev-dependencies.image]
+version = "0.24"
+
 [features]
 default = []
 clap = ["linux-video-core/clap"]
 serde = ["linux-video-core/serde"]
+test-vivid = []

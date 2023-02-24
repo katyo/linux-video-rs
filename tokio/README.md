@@ -154,10 +154,8 @@ use tokio_linux_video::{types::*, Device};
 async fn main() -> std::io::Result<()> {
     let dev = Device::open("/dev/video0").await?;
 
-    let mut fmt = Format::from(BufferType::VideoCapture);
-
     // Get current format
-    dev.get_format(&mut fmt)?;
+    let mut fmt = dev.format(BufferType::VideoCapture).await?;
     println!("  {}", fmt);
 
     // Start video capture stream

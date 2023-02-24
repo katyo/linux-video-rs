@@ -6,14 +6,11 @@ macro_rules! fourcc_impl {
             $($(#[$($meta)*])* $name = fourcc_impl!(@$($opt)*: $a $b $c $d),)*
         }
 
-        impl core::fmt::Display for FourCc {
-            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                let raw = *self as u32;
-                (raw as u8 as char).fmt(f)?;
-                ((raw >> 8) as u8 as char).fmt(f)?;
-                ((raw >> 16) as u8 as char).fmt(f)?;
-                ((raw >> 24) as u8 as char).fmt(f)
-            }
+        impl FourCc {
+            /// Slice of all variants
+            pub const ALL: &[Self] = &[
+                $(Self::$name,)*
+            ];
         }
     };
 
@@ -584,5 +581,99 @@ impl FourCc {
 
     pub fn is_hsv(self) -> bool {
         matches!(self, Self::Hsv24 | Self::Hsv32)
+    }
+}
+
+impl core::convert::TryFrom<u32> for FourCc {
+    type Error = u32;
+
+    fn try_from(fourcc: u32) -> core::result::Result<Self, Self::Error> {
+        for variant in Self::ALL {
+            if *variant as u32 == fourcc {
+                return Ok(*variant);
+            }
+        }
+        Err(fourcc)
+    }
+}
+
+impl<'a> core::convert::TryFrom<&'a [u8; 4]> for FourCc {
+    type Error = &'a [u8; 4];
+
+    fn try_from(fourcc: &'a [u8; 4]) -> core::result::Result<Self, Self::Error> {
+        ((fourcc[0] as u32)
+            | ((fourcc[1] as u32) << 8)
+            | ((fourcc[2] as u32) << 16)
+            | ((fourcc[3] as u32) << 24))
+            .try_into()
+            .map_err(|_| fourcc)
+    }
+}
+
+impl<'a> core::convert::TryFrom<&'a [u8]> for FourCc {
+    type Error = &'a [u8];
+
+    fn try_from(fourcc: &'a [u8]) -> core::result::Result<Self, Self::Error> {
+        let array: &[u8; 4] = fourcc.try_into().map_err(|_| fourcc)?;
+        array.try_into().map_err(|_| fourcc)
+    }
+}
+
+impl core::convert::TryFrom<[u8; 4]> for FourCc {
+    type Error = [u8; 4];
+
+    fn try_from(fourcc: [u8; 4]) -> core::result::Result<Self, Self::Error> {
+        ((fourcc[0] as u32)
+            | ((fourcc[1] as u32) << 8)
+            | ((fourcc[2] as u32) << 16)
+            | ((fourcc[3] as u32) << 24))
+            .try_into()
+            .map_err(|_| fourcc)
+    }
+}
+
+impl<'a> core::convert::TryFrom<&'a str> for FourCc {
+    type Error = &'a str;
+
+    fn try_from(fourcc: &'a str) -> core::result::Result<Self, Self::Error> {
+        fourcc.as_bytes().try_into().map_err(|_| fourcc)
+    }
+}
+
+impl core::str::FromStr for FourCc {
+    type Err = ();
+
+    fn from_str(src: &str) -> Result<Self, Self::Err> {
+        src.try_into().map_err(|_| ())
+    }
+}
+
+impl AsRef<u32> for FourCc {
+    fn as_ref(&self) -> &u32 {
+        unsafe { &*(self as *const Self as *const u32) }
+    }
+}
+
+impl AsRef<[u8; 4]> for FourCc {
+    fn as_ref(&self) -> &[u8; 4] {
+        unsafe { &*(self as *const Self as *const [u8; 4]) }
+    }
+}
+
+impl AsRef<[u8]> for FourCc {
+    fn as_ref(&self) -> &[u8] {
+        AsRef::<[u8; 4]>::as_ref(self).as_ref()
+    }
+}
+
+impl AsRef<str> for FourCc {
+    fn as_ref(&self) -> &str {
+        unsafe { core::str::from_utf8_unchecked(self.as_ref()) }
+    }
+}
+
+impl core::fmt::Display for FourCc {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_str(self.as_ref())
     }
 }

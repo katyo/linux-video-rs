@@ -23,7 +23,11 @@ features = ["fs", "io-util", "rt", "net"]
 version = "1"
 features = ["macros", "rt-multi-thread"]
 
+[dev-dependencies.image]
+version = "0.24"
+
 [features]
 default = []
 clap = ["linux-video-core/clap"]
 serde = ["linux-video-core/serde"]
+test-vivid = []

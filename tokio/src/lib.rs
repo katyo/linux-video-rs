@@ -1,8 +1,9 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
+    fs::File,
     io,
-    os::unix::io::{AsRawFd, FromRawFd, RawFd},
+    os::unix::io::{AsRawFd, RawFd},
     path::{Path, PathBuf},
 };
 
@@ -20,37 +21,6 @@ where
     match spawn_blocking(f).await {
         Ok(res) => res,
         Err(_) => Err(Error::new(io::ErrorKind::Other, "background task failed")),
-    }
-}
-
-#[doc(hidden)]
-pub struct File {
-    // use file to call close when drop
-    inner: AsyncFd<std::fs::File>,
-}
-
-impl File {
-    pub fn from_fd(fd: RawFd) -> Result<Self> {
-        let file = unsafe { std::fs::File::from_raw_fd(fd) };
-        Ok(Self {
-            inner: AsyncFd::new(file)?,
-        })
-    }
-
-    pub fn from_file(file: std::fs::File) -> Result<Self> {
-        let fd = file.as_raw_fd();
-        core::mem::forget(file);
-        Self::from_fd(fd)
-    }
-
-    pub fn try_clone(&self) -> Result<Self> {
-        Self::from_file(self.inner.get_ref().try_clone()?)
-    }
-}
-
-impl AsRawFd for File {
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
     }
 }
 
@@ -75,7 +45,7 @@ impl Device {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_owned();
         let file = asyncify(move || open(path, true)).await?;
-        let file = File::from_file(file)?;
+        //let file = File::from_file(file)?;
 
         Ok(Device { file })
     }
@@ -445,7 +415,19 @@ impl<Dir, Met: Method> Stream<Dir, Met> {
     pub async fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
         let fd = self.file.as_raw_fd();
 
-        let _ = core::future::poll_fn(|cx| self.file.inner.poll_read_ready(cx)).await?;
+        struct FdWrapper {
+            fd: RawFd,
+        }
+
+        impl AsRawFd for FdWrapper {
+            fn as_raw_fd(&self) -> RawFd {
+                self.fd
+            }
+        }
+
+        let async_fd = AsyncFd::new(FdWrapper { fd })?;
+
+        let _ = core::future::poll_fn(|cx| async_fd.poll_read_ready(cx)).await?;
 
         self.queue.enqueue_all(fd)?;
         self.queue.dequeue(fd)

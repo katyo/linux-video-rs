@@ -3,10 +3,8 @@ use linux_video::{types::*, Device};
 fn main() -> std::io::Result<()> {
     let dev = Device::open("/dev/video0")?;
 
-    let mut fmt = Format::from(BufferType::VideoCapture);
-
     // Get current format
-    dev.get_format(&mut fmt)?;
+    let fmt = dev.format(BufferType::VideoCapture)?;
     println!("  {}", fmt);
 
     // Start video capture stream
