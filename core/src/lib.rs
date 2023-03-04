@@ -7,6 +7,7 @@ compile_error!("This crate support Linux only");
 mod macros;
 
 mod calls;
+mod extras;
 mod impls;
 mod types;
 mod utils;
