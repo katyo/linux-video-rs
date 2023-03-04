@@ -1,21 +1,28 @@
 [package]
-name = "linux-video"
-description = "Linux V4L2 device interfacing"
+name = "async-std-linux-video"
+description = "Linux V4L2 device interfacing with tokio"
 version = "0.1.0"
 authors = ["K. <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
-categories = ["os", "os::linux-apis"]
-keywords = ["v4l", "v4l2", "video", "linux", "ioctl"]
+categories = ["os", "os::linux-apis", "asynchronous"]
+keywords = ["v4l", "v4l2", "linux", "async", "async-std"]
 edition = "2021"
 
-[workspace]
-members = ["core", "tokio", "async-std", "cli"]
-
 [dependencies.linux-video-core]
-path = "core"
+path = "../core"
 version = "0.1.0"
 default-features = false
+
+[dependencies.async-io]
+version = "1"
+
+[dependencies.async-std]
+version = "1"
+
+[dev-dependencies.async-std]
+version = "1"
+features = ["attributes"]
 
 [dev-dependencies.image]
 version = "0.24"
