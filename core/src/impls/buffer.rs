@@ -424,6 +424,8 @@ struct BufferState<Met: Method> {
     _phantom: PhantomData<Met>,
 }
 
+unsafe impl<Met: Method> Send for BufferState<Met> {}
+
 impl<Met: Method> core::ops::Deref for BufferState<Met> {
     type Target = Buffer;
 
