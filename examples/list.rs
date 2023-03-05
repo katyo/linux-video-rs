@@ -10,7 +10,7 @@ fn main() -> std::io::Result<()> {
 
         let caps = dev.capabilities()?;
 
-        println!("path: {}, {}", path.display(), caps);
+        println!("path: {}, {caps}", path.display());
     }
 
     Ok(())

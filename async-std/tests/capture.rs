@@ -15,7 +15,7 @@ async fn capture_webcam() {
     let mut fmts = dev.formats(BufferType::VideoCapture);
 
     while let Some(fmt) = fmts.fetch_next().await.unwrap() {
-        eprintln!("  fmt: {}", fmt);
+        eprintln!("  fmt: {fmt}");
     }
 
     let mut prev_fmt = dev.format(BufferType::VideoCapture).await.unwrap();

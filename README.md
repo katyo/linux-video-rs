@@ -36,7 +36,7 @@ fn main() -> std::io::Result<()> {
 
         let caps = dev.capabilities()?;
 
-        println!("path: {}, {}", path.display(), caps);
+        println!("path: {}, {caps}", path.display());
     }
 
     Ok(())
@@ -53,17 +53,17 @@ fn main() -> std::io::Result<()> {
 
     let caps = dev.capabilities()?;
 
-    println!("Capabilities: {}", caps);
+    println!("Capabilities: {caps}");
 
     println!("Controls:");
     let mut controls = dev.controls(None);
 
     while let Some(ctrl) = controls.fetch_next()? {
-        println!("  {}", ctrl);
+        println!("  {ctrl}");
 
         if let Some(mut items) = dev.control_items(&ctrl) {
             while let Some(item) = items.fetch_next()? {
-                println!("    {}", item);
+                println!("    {item}");
             }
         }
     }
@@ -84,24 +84,24 @@ fn main() -> std::io::Result<()> {
 
     for type_ in BufferType::ALL {
         if type_.is_supported(caps.capabilities()) {
-            println!("{} formats:", type_);
+            println!("{type_} formats:");
             let mut fmts = dev.formats(type_);
 
             if let Some(fmt) = fmts.fetch_next()? {
-                println!("  {}", fmt);
+                println!("  {fmt}");
 
                 if type_.content().is_video() {
                     let mut sizes = dev.sizes(fmt.pixel_format());
 
                     while let Some(size) = sizes.fetch_next()? {
-                        println!("    {}", size);
+                        println!("    {size}");
 
                         for size in size.sizes() {
-                            println!("      {}", size);
+                            println!("      {size}");
                             let mut intervals = dev.intervals(fmt.pixel_format(), size.width(), size.height());
 
                             while let Some(interval) = intervals.fetch_next()? {
-                                println!("        {}", interval);
+                                println!("        {interval}");
                             }
                         }
                     }
@@ -134,7 +134,7 @@ fn main() -> std::io::Result<()> {
     // Get reference to value data
     let contrast_value = contrast.try_ref::<i32>().unwrap();
 
-    println!("Current contrast: {:?}", contrast_value);
+    println!("Current contrast: {contrast_value:?}");
 
     // Set new value by reference
     *contrast.try_mut::<i32>().unwrap() = contrast_value + 10;
@@ -156,18 +156,51 @@ use linux_video::{types::*, Device};
 fn main() -> std::io::Result<()> {
     let dev = Device::open("/dev/video0")?;
 
-    let mut fmt = Format::from(BufferType::VideoCapture);
-
     // Get current format
-    dev.get_format(&mut fmt)?;
-    println!("  {}", fmt);
+    let mut fmt = dev.format(BufferType::VideoOutput).await?;
+    println!("  {fmt}");
 
     // Start video capture stream
     let stream = dev.stream::<In, Mmap>(ContentType::Video, 4)?;
 
     let mut i = 0;
     while let Ok(buffer) = stream.next() {
-        println!("#{} {}", i, buffer);
+        println!("#{i} {buffer}");
+
+        // Get reference to frame buffer contents
+        let _data: &[u8] = buffer.as_ref();
+
+        i += 1;
+        if i > 30 {
+            break;
+        }
+    }
+
+    Ok(())
+}
+```
+
+Output video data:
+
+```rust,no_run
+use linux_video::{types::*, Device};
+
+fn main() -> std::io::Result<()> {
+    let dev = Device::open("/dev/video0")?;
+
+    // Get current format
+    let mut fmt = dev.format(BufferType::VideoOutput)?;
+    println!("  {fmt}");
+
+    // Start video output stream
+    let stream = dev.stream::<Out, Mmap>(ContentType::Video, 4)?;
+
+    let mut i = 0;
+    while let Ok(mut buffer) = stream.next() {
+        println!("#{i} {buffer}");
+
+        // Get reference to frame buffer contents
+        let data: &mut [u8] = buffer.as_mut();
 
         i += 1;
         if i > 30 {

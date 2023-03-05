@@ -15,7 +15,7 @@ fn main() -> std::io::Result<()> {
     // Get reference to value data
     let contrast_value = contrast.try_ref::<i32>().unwrap();
 
-    println!("Current contrast: {:?}", contrast_value);
+    println!("Current contrast: {contrast_value:?}");
 
     // Set new value by reference
     *contrast.try_mut::<i32>().unwrap() = contrast_value + 10;

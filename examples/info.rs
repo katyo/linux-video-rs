@@ -5,17 +5,17 @@ fn main() -> std::io::Result<()> {
 
     let caps = dev.capabilities()?;
 
-    println!("Capabilities: {}", caps);
+    println!("Capabilities: {caps}");
 
     println!("Controls:");
     for ctrl in dev.controls(None) {
         let ctrl = ctrl?;
-        println!("  {}", ctrl);
+        println!("  {ctrl}");
 
         if let Some(items) = dev.control_items(&ctrl) {
             for item in items {
                 let item = item?;
-                println!("    {}", item);
+                println!("    {item}");
             }
         }
     }

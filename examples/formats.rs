@@ -7,23 +7,23 @@ fn main() -> std::io::Result<()> {
 
     for type_ in BufferType::ALL {
         if type_.is_supported(caps.capabilities()) {
-            println!("{} formats:", type_);
+            println!("{type_} formats:");
             for fmt in dev.formats(type_) {
                 let fmt = fmt?;
-                println!("  {}", fmt);
+                println!("  {fmt}");
 
                 if type_.content().is_video() {
                     for size in dev.sizes(fmt.pixel_format()) {
                         let size = size?;
-                        println!("    {}", size);
+                        println!("    {size}");
 
                         for size in size.sizes() {
-                            println!("      {}", size);
+                            println!("      {size}");
                             for interval in
                                 dev.intervals(fmt.pixel_format(), size.width(), size.height())
                             {
                                 let interval = interval?;
-                                println!("        {}", interval);
+                                println!("        {interval}");
                             }
                         }
                     }

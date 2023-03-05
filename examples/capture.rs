@@ -5,14 +5,14 @@ fn main() -> std::io::Result<()> {
 
     // Get current format
     let fmt = dev.format(BufferType::VideoCapture)?;
-    println!("  {}", fmt);
+    println!("  {fmt}");
 
     // Start video capture stream
     let stream = dev.stream::<In, Mmap>(ContentType::Video, 4)?;
 
     let mut i = 0;
     while let Ok(buffer) = stream.next() {
-        println!("#{} {}", i, buffer);
+        println!("#{i} {buffer}");
 
         i += 1;
         if i > 30 {
