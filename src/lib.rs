@@ -362,9 +362,7 @@ impl<Dir: Direction, Met: Method> Stream<Dir, Met> {
 
     /// Get next frame to write or read
     pub fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
-        let fd = self.file.as_raw_fd();
-        let _ = self.queue.prepare(fd)?;
-        self.queue.next(fd)
+        self.queue.next(self.file.as_raw_fd())
     }
 }
 

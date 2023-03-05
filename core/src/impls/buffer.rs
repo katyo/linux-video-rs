@@ -643,14 +643,6 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
         }
     }
 
-    /// Check if queue may be blocked
-    pub fn prepare(&self, fd: RawFd) -> Result<bool>
-    where
-        Dir: Direction,
-    {
-        Dir::prepare(self, fd)
-    }
-
     /// Get next buffer to read or write
     pub fn next(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>>
     where
@@ -661,7 +653,10 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
 }
 
 impl DirectionImpl for In {
-    fn prepare<Met: Method>(queue: &Internal<QueueData<Self, Met>>, fd: RawFd) -> Result<bool> {
+    fn next<Met: Method>(
+        queue: &Internal<QueueData<Self, Met>>,
+        fd: RawFd,
+    ) -> Result<BufferData<'_, Self, Met>> {
         if queue.is_on() {
             queue.enqueue_ready(fd)?;
         } else {
@@ -669,22 +664,11 @@ impl DirectionImpl for In {
             queue.enqueue_ready(fd)?;
             queue.on(fd)?;
         }
-        Ok(true)
-    }
-
-    fn next<Met: Method>(
-        queue: &Internal<QueueData<Self, Met>>,
-        fd: RawFd,
-    ) -> Result<BufferData<'_, Self, Met>> {
         queue.dequeue(fd)
     }
 }
 
 impl DirectionImpl for Out {
-    fn prepare<Met: Method>(queue: &Internal<QueueData<Self, Met>>, _fd: RawFd) -> Result<bool> {
-        Ok(queue.is_on())
-    }
-
     fn next<Met: Method>(
         queue: &Internal<QueueData<Self, Met>>,
         fd: RawFd,

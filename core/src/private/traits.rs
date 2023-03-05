@@ -6,11 +6,6 @@ use std::os::unix::io::RawFd;
 
 /// Direction implementation details
 pub trait DirectionImpl: Sized {
-    /// Prepare next frame buffer
-    ///
-    /// Returns true if next fn would block
-    fn prepare<Met: Method>(queue: &Internal<QueueData<Self, Met>>, fd: RawFd) -> Result<bool>;
-
     /// Get next frame buffer from queue
     fn next<Met: Method>(
         queue: &Internal<QueueData<Self, Met>>,

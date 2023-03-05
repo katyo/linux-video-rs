@@ -428,19 +428,23 @@ impl<Dir: Direction, Met: Method> Stream<Dir, Met> {
     pub async fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
         let fd = self.file.as_raw_fd();
 
-        if self.queue.prepare(fd)? {
-            let async_fd = AsyncFd::new(FdWrapper { fd })?;
+        loop {
+            match self.queue.next(fd) {
+                Ok(buffer) => break Ok(buffer),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    let async_fd = AsyncFd::new(FdWrapper { fd })?;
 
-            let _ = core::future::poll_fn(|cx| {
-                if Dir::IN {
-                    async_fd.poll_read_ready(cx)
-                } else {
-                    async_fd.poll_write_ready(cx)
+                    let _ = core::future::poll_fn(|cx| {
+                        if Dir::IN {
+                            async_fd.poll_read_ready(cx)
+                        } else {
+                            async_fd.poll_write_ready(cx)
+                        }
+                    })
+                    .await?;
                 }
-            })
-            .await?;
+                Err(error) => break Err(error),
+            }
         }
-
-        self.queue.next(fd)
     }
 }
