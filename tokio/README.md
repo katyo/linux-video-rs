@@ -1,4 +1,4 @@
-# Linux V4L2 API for Rust
+# Tokio Linux V4L2 API for Rust
 
 [![github](https://img.shields.io/badge/github-katyo/linux--video--rs-8da0cb.svg?style=for-the-badge&logo=github)](https://github.com/katyo/linux-video-rs)
 [![crate](https://img.shields.io/crates/v/tokio-linux-video.svg?style=for-the-badge&color=fc8d62&logo=rust)](https://crates.io/crates/tokio-linux-video)
