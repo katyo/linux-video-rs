@@ -45,3 +45,4 @@ optional = true
 
 [features]
 default = []
+thread-safe = []
