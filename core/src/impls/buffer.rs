@@ -6,17 +6,35 @@ use core::{
 };
 use getset::CopyGetters;
 use std::{
+    cell::{Cell, RefCell, RefMut},
+    collections::VecDeque,
     os::unix::io::RawFd,
-    sync::{Mutex, MutexGuard},
 };
 
 /// Direction types
-pub trait Direction {
+pub trait Direction: DirectionImpl {
+    const IN: bool;
+    const OUT: bool;
+
     fn buffer_type(content: ContentType) -> BufferType;
 }
 
+/// Direction implementation details
+pub trait DirectionImpl: Sized {
+    /// Prepare next frame buffer
+    ///
+    /// Returns true if next fn would block
+    fn prepare<Met: Method>(queue: &Internal<QueueData<Self, Met>>, fd: RawFd) -> Result<bool>;
+
+    /// Get next frame buffer from queue
+    fn next<Met: Method>(
+        queue: &Internal<QueueData<Self, Met>>,
+        fd: RawFd,
+    ) -> Result<BufferData<'_, Self, Met>>;
+}
+
 macro_rules! direction_impl {
-    ($($(#[$($meta:meta)*])* $type:ident {
+    ($($(#[$($meta:meta)*])* $type:ident ($is_input:literal) {
         $($(#[$($variant_meta:meta)*])* $content_type:ident = $buffer_type:ident,)*
     })*) => {
         $(
@@ -24,6 +42,9 @@ macro_rules! direction_impl {
             pub struct $type;
 
             impl Direction for $type {
+                const IN: bool = $is_input;
+                const OUT: bool = !$is_input;
+
                 fn buffer_type(content: ContentType) -> BufferType {
                     match content {
                         $(
@@ -72,7 +93,7 @@ impl ContentType {
 
 direction_impl! {
     /// Capture (input direction)
-    In {
+    In (true) {
         /// Video capture
         Video = VideoCapture,
         Vbi = VbiCapture,
@@ -84,7 +105,7 @@ direction_impl! {
     }
 
     /// Render (output direction)
-    Out  {
+    Out (false) {
         Video = VideoOutput,
         Vbi = VbiOutput,
         SlicedVbi = SlicedVbiOutput,
@@ -341,11 +362,8 @@ impl Internal<Buffer> {
     }
 }
 
-/// I/O method types
-pub trait Method {
-    /// Corresponding memory type
-    const MEMORY: Memory;
-
+/// I/O method implementation details
+pub trait MethodImpl {
     /// Initialize pointer to data
     fn init(buffer: &Buffer, fd: RawFd) -> Result<*mut u8>;
 
@@ -356,13 +374,21 @@ pub trait Method {
     fn update(_buffer: &mut Buffer, _pointer: *mut u8) {}
 }
 
+/// I/O method types
+pub trait Method: MethodImpl {
+    /// Corresponding memory type
+    const MEMORY: Memory;
+}
+
 /// Memory mapping
 #[derive(Debug, Clone, Copy)]
 pub struct Mmap;
 
 impl Method for Mmap {
     const MEMORY: Memory = Memory::Mmap;
+}
 
+impl MethodImpl for Mmap {
     fn init(buffer: &Buffer, fd: RawFd) -> Result<*mut u8> {
         use nix::sys::mman::{mmap, MapFlags, ProtFlags};
 
@@ -390,7 +416,9 @@ pub struct UserPtr;
 
 impl Method for UserPtr {
     const MEMORY: Memory = Memory::UserPtr;
+}
 
+impl MethodImpl for UserPtr {
     fn init(buffer: &Buffer, _fd: RawFd) -> Result<*mut u8> {
         let mut buffer = Vec::<u8>::with_capacity(buffer.length as _);
 
@@ -451,14 +479,7 @@ impl<Met: Method> BufferState<Met> {
         self.buffer.queue(fd)
     }
 
-    fn try_enqueue(&mut self, fd: RawFd) -> Result<()> {
-        if !self.buffer.is_queued() {
-            self.enqueue(fd)?;
-        }
-        Ok(())
-    }
-
-    fn dequeue(&mut self, buffer: Internal<Buffer>) {
+    fn reuse(&mut self, buffer: Internal<Buffer>) {
         self.buffer = buffer;
     }
 
@@ -475,7 +496,13 @@ impl<Met: Method> Drop for BufferState<Met> {
 
 #[derive(CopyGetters)]
 pub struct QueueData<Dir, Met: Method> {
-    buffers: Vec<Mutex<BufferState<Met>>>,
+    buffers: Vec<RefCell<BufferState<Met>>>,
+
+    /// Dequeued buffers indexes
+    dequeued: RefCell<VecDeque<u32>>,
+
+    /// Stream on flag
+    on: Cell<bool>,
 
     /// Buffers type
     #[getset(get_copy = "pub")]
@@ -514,13 +541,15 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
             let mut buffer = Internal::<Buffer>::new(type_, Met::MEMORY, index);
             buffer.query(fd)?;
             let data = BufferState::new(fd, buffer)?;
-            buffers.push(Mutex::new(data));
+            buffers.push(RefCell::new(data));
         }
 
         let type_ = type_.into();
 
         Ok(QueueData {
             buffers,
+            dequeued: RefCell::new(VecDeque::with_capacity(count as _)),
+            on: Cell::new(false),
             type_,
             _phantom: PhantomData,
         }
@@ -529,62 +558,173 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
 
     /// Delete buffers queue
     pub fn del(&mut self, fd: RawFd) -> Result<()> {
+        self.off(fd)?;
+
         let _request_buffers =
             Internal::<RequestBuffers>::request(fd, *self.type_, Met::MEMORY, 0)?;
 
         Ok(())
     }
 
-    /// Enqueue all dequeued buffers and start stream
-    pub fn start(&self, fd: RawFd) -> Result<()> {
-        self.enqueue_all(fd)?;
-        self.type_.stream_on(fd)
+    /// Is queue started
+    #[inline(always)]
+    fn is_on(&self) -> bool {
+        self.on.get()
     }
 
-    /// Stop stream and dequeue all enqueued buffers
-    pub fn stop(&self, fd: RawFd) -> Result<()> {
+    /// Start stream
+    fn on(&self, fd: RawFd) -> Result<()> {
+        self.type_.stream_on(fd)?;
+        self.on.set(true);
+        Ok(())
+    }
+
+    /// Stop stream and mark all buffers as dequeued
+    fn off(&self, fd: RawFd) -> Result<()> {
         self.type_.stream_off(fd)?;
+        self.on.set(false);
+
         // stream_off removes all buffers from both queues
         // and unlocks all buffers as a side effect
-
-        for data in &self.buffers {
-            if let Ok(mut data) = data.try_lock() {
-                data.mark_dequeued();
-            }
-        }
+        self.dequeue_queued();
 
         Ok(())
     }
 
-    /// Enqueue all dequeued buffers
-    pub fn enqueue_all(&self, fd: RawFd) -> Result<()> {
-        for data in &self.buffers {
-            if let Ok(mut data) = data.try_lock() {
-                data.try_enqueue(fd)?;
+    /// Dequeue all buffers
+    fn dequeue_all(&self) {
+        for index in 0..self.buffers.len() {
+            if let Ok(mut data) = self.buffers[index].try_borrow_mut() {
+                data.mark_dequeued();
+                self.dequeued.borrow_mut().push_back(index as _);
             }
         }
+    }
+
+    /// Dequeue queued buffers
+    fn dequeue_queued(&self) {
+        for index in 0..self.buffers.len() {
+            if let Ok(mut data) = self.buffers[index].try_borrow_mut() {
+                if data.is_queued() {
+                    data.mark_dequeued();
+                    self.dequeued.borrow_mut().push_back(index as _);
+                }
+            }
+        }
+    }
+
+    /// Dequeue single unused buffer
+    fn dequeue_unused(&self) -> Option<BufferData<'_, Dir, Met>> {
+        for index in 0..self.buffers.len() {
+            if let Ok(data) = self.buffers[index].try_borrow_mut() {
+                if !data.is_queued() {
+                    self.dequeued.borrow_mut().push_back(index as _);
+                    return Some(BufferData::new(data));
+                }
+            }
+        }
+        None
+    }
+
+    /// Enqueue ready dequeued buffers
+    fn enqueue_ready(&self, fd: RawFd) -> Result<()> {
+        // we need enqueue only first N buffers which is ready
+        // (already processed by user)
+        while let Some(first) = {
+            let deq = self.dequeued.borrow();
+            deq.front().copied()
+        } {
+            if let Ok(mut data) = self.buffers[first as usize].try_borrow_mut() {
+                data.enqueue(fd)?;
+                self.dequeued.borrow_mut().pop_front();
+            } else {
+                // stop on first not ready buffer to preserve sequence
+                break;
+            }
+        }
+
         Ok(())
     }
 
     /// Try dequeue buffer
-    pub fn dequeue(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>> {
+    fn dequeue(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>> {
         let mut buffer = Internal::<Buffer>::new(*self.type_, Met::MEMORY, 0);
 
         buffer.dequeue(fd)?;
 
         let index = buffer.index as usize;
 
-        if let Ok(mut data) = self.buffers[index].try_lock() {
-            data.dequeue(buffer);
+        if let Ok(mut data) = self.buffers[index].try_borrow_mut() {
+            data.reuse(buffer);
+            self.dequeued.borrow_mut().push_back(index as u32);
+
             Ok(BufferData::new(data))
         } else {
             unreachable!();
         }
     }
+
+    /// Check if queue may be blocked
+    pub fn prepare(&self, fd: RawFd) -> Result<bool>
+    where
+        Dir: Direction,
+    {
+        Dir::prepare(self, fd)
+    }
+
+    /// Get next buffer to read or write
+    pub fn next(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>>
+    where
+        Dir: Direction,
+    {
+        Dir::next(self, fd)
+    }
+}
+
+impl DirectionImpl for In {
+    fn prepare<Met: Method>(queue: &Internal<QueueData<Self, Met>>, fd: RawFd) -> Result<bool> {
+        if queue.is_on() {
+            queue.enqueue_ready(fd)?;
+        } else {
+            queue.dequeue_all();
+            queue.enqueue_ready(fd)?;
+            queue.on(fd)?;
+        }
+        Ok(true)
+    }
+
+    fn next<Met: Method>(
+        queue: &Internal<QueueData<Self, Met>>,
+        fd: RawFd,
+    ) -> Result<BufferData<'_, Self, Met>> {
+        queue.dequeue(fd)
+    }
+}
+
+impl DirectionImpl for Out {
+    fn prepare<Met: Method>(queue: &Internal<QueueData<Self, Met>>, _fd: RawFd) -> Result<bool> {
+        Ok(queue.is_on())
+    }
+
+    fn next<Met: Method>(
+        queue: &Internal<QueueData<Self, Met>>,
+        fd: RawFd,
+    ) -> Result<BufferData<'_, Self, Met>> {
+        queue.enqueue_ready(fd)?;
+        if queue.is_on() {
+            queue.dequeue(fd)
+        } else {
+            if let Some(buffer) = queue.dequeue_unused() {
+                return Ok(buffer);
+            }
+            queue.on(fd)?;
+            queue.dequeue(fd)
+        }
+    }
 }
 
 pub struct BufferData<'r, Dir, Met: Method> {
-    data: MutexGuard<'r, BufferState<Met>>,
+    data: RefMut<'r, BufferState<Met>>,
     _phantom: PhantomData<Dir>,
 }
 
@@ -626,7 +766,7 @@ impl<'r, Met: Method> BufferData<'r, Out, Met> {
 
 impl<'r, Dir, Met: Method> BufferData<'r, Dir, Met> {
     #[inline(always)]
-    fn new(data: MutexGuard<'r, BufferState<Met>>) -> Self {
+    fn new(data: RefMut<'r, BufferState<Met>>) -> Self {
         Self {
             data,
             _phantom: PhantomData,

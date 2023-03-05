@@ -349,20 +349,13 @@ pub struct Stream<Dir, Met: Method> {
 
 impl<Dir, Met: Method> Drop for Stream<Dir, Met> {
     fn drop(&mut self) {
-        let fd = self.file.as_raw_fd();
-        let _ = self.queue.stop(fd);
-        let _ = self.queue.del(fd);
+        let _ = self.queue.del(self.file.as_raw_fd());
     }
 }
 
-impl<Dir, Met: Method> Stream<Dir, Met> {
-    fn new(file: File, type_: ContentType, count: usize) -> Result<Self>
-    where
-        Dir: Direction,
-    {
+impl<Dir: Direction, Met: Method> Stream<Dir, Met> {
+    fn new(file: File, type_: ContentType, count: usize) -> Result<Self> {
         let queue = Internal::<QueueData<Dir, Met>>::new(file.as_raw_fd(), type_, count as _)?;
-
-        queue.start(file.as_raw_fd())?;
 
         Ok(Self { file, queue })
     }
@@ -370,9 +363,8 @@ impl<Dir, Met: Method> Stream<Dir, Met> {
     /// Get next frame to write or read
     pub fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
         let fd = self.file.as_raw_fd();
-
-        self.queue.enqueue_all(fd)?;
-        self.queue.dequeue(fd)
+        let _ = self.queue.prepare(fd)?;
+        self.queue.next(fd)
     }
 }
 
