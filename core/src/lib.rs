@@ -1,3 +1,5 @@
+#![forbid(future_incompatible)]
+#![deny(bad_style/*, missing_docs*/)]
 #![doc = include_str!("../README.md")]
 
 #[cfg(not(target_os = "linux"))]
