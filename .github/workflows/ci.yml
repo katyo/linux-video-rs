@@ -83,6 +83,14 @@ jobs:
           - task: test
             rust: stable
             target: x86_64-unknown-linux-gnu
+            features: serde
+          - task: test
+            rust: stable
+            target: x86_64-unknown-linux-gnu
+            features: full
+          - task: test
+            rust: stable
+            target: x86_64-unknown-linux-gnu
             features: default
 
           # Test targets
