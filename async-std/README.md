@@ -14,6 +14,13 @@ Interface types wraps kernel types to avoid unnecessary copying.
 
 At end this is my demure attempt to do things right.
 
+## Crates
+
+- [linux-video-core](https://crates.io/crates/linux-video-core) - core abstractions and low level interface (not for end users)
+- [linux-video](https://crates.io/crates/linux-video) - sync interface which supports synchronous operation only
+- [tokio-linux-video](https://crates.io/crates/tokio-linux-video) - async interface for [tokio](https://tokio.rs/) users
+- **[async-std-linux-video](https://crates.io/crates/async-std-linux-video)** - async interface for [async-std](https://async.rs/) users
+
 ## Usage examples
 
 Enumerating devices:
