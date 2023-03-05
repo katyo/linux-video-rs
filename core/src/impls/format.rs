@@ -7,7 +7,7 @@ impl Internal<&mut Format> {
     }
 }
 
-impl Internal<&Format> {
+impl Internal<&mut Format> {
     pub fn set(&self, fd: RawFd) -> Result<()> {
         unsafe_call!(calls::s_fmt(fd, *self.as_ref() as *const _ as *mut _)).map(|_| ())
     }

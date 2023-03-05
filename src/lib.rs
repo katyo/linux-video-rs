@@ -103,12 +103,12 @@ impl Device {
     }
 
     /// Set current format
-    pub fn set_format(&self, fmt: &Format) -> Result<()> {
+    pub fn set_format(&self, fmt: &mut Format) -> Result<()> {
         Internal::from(fmt).set(self.as_raw_fd())
     }
 
     /// Try format without set it
-    pub fn try_format(&self, fmt: &Format) -> Result<()> {
+    pub fn try_format(&self, fmt: &mut Format) -> Result<()> {
         Internal::from(fmt).try_(self.as_raw_fd())
     }
 

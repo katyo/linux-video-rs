@@ -124,17 +124,27 @@ impl Device {
     }
 
     /// Set current format
-    pub async fn set_format(&self, fmt: &Format) -> Result<()> {
+    pub async fn set_format(&self, fmt: &mut Format) -> Result<()> {
         let fd = self.as_raw_fd();
-        let fmt = fmt.clone();
-        asyncify(move || Internal::from(&fmt).set(fd)).await
+        let mut fmt2 = *fmt;
+        *fmt = asyncify(move || -> Result<Format> {
+            Internal::from(&mut fmt2).set(fd)?;
+            Ok(fmt2)
+        })
+        .await?;
+        Ok(())
     }
 
     /// Try format without set it
-    pub async fn try_format(&self, fmt: &Format) -> Result<()> {
+    pub async fn try_format(&self, fmt: &mut Format) -> Result<()> {
         let fd = self.as_raw_fd();
-        let fmt = fmt.clone();
-        asyncify(move || Internal::from(&fmt).try_(fd)).await
+        let mut fmt2 = *fmt;
+        *fmt = asyncify(move || -> Result<Format> {
+            Internal::from(&mut fmt2).try_(fd)?;
+            Ok(fmt2)
+        })
+        .await?;
+        Ok(())
     }
 
     /// Get supported frame sizes

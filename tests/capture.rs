@@ -18,7 +18,7 @@ fn capture_webcam() {
         eprintln!("  fmt: {}", fmt);
     }
 
-    let prev_fmt = dev.format(BufferType::VideoCapture).unwrap();
+    let mut prev_fmt = dev.format(BufferType::VideoCapture).unwrap();
     println!("fmt: {prev_fmt}");
 
     const WIDTH: u32 = 640;
@@ -34,8 +34,8 @@ fn capture_webcam() {
     //pixfmt.set_size_image(3 * pixfmt.width() * pixfmt.height());
     println!("new pixfmt: {pixfmt}");
 
-    dev.try_format(&fmt).unwrap();
-    dev.set_format(&fmt).unwrap();
+    dev.try_format(&mut fmt).unwrap();
+    dev.set_format(&mut fmt).unwrap();
 
     let fmt = dev.format(BufferType::VideoCapture).unwrap();
     println!("new fmt: {fmt}");
@@ -57,7 +57,8 @@ fn capture_webcam() {
         let stream = dev.stream::<In, Mmap>(ContentType::Video, 4).unwrap();
 
         let mut i = 0;
-        while let Ok(buffer) = stream.next() {
+        loop {
+            let buffer = stream.next().unwrap();
             println!("#{i} {buffer}");
 
             let data: &[u8] = buffer.as_ref();
@@ -72,5 +73,6 @@ fn capture_webcam() {
         }
     }
 
-    dev.set_format(&prev_fmt).unwrap();
+    dev.set_format(&mut prev_fmt).unwrap();
+    //assert!(false);
 }
