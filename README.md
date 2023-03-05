@@ -157,7 +157,7 @@ fn main() -> std::io::Result<()> {
     let dev = Device::open("/dev/video0")?;
 
     // Get current format
-    let mut fmt = dev.format(BufferType::VideoOutput).await?;
+    let mut fmt = dev.format(BufferType::VideoOutput)?;
     println!("  {fmt}");
 
     // Start video capture stream

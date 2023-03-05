@@ -186,7 +186,7 @@ async fn main() -> std::io::Result<()> {
 Output video data:
 
 ```rust,no_run
-use async_std_linux_video::{types::*, Device};
+use tokio_linux_video::{types::*, Device};
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
