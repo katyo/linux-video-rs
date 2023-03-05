@@ -26,11 +26,11 @@ fn main() -> Result<()> {
             all,
         } => {
             if all {
-              capabilities = true;
-              controls = true;
-              formats = true;
-              sizes = true;
-              intervals = true;
+                capabilities = true;
+                controls = true;
+                formats = true;
+                sizes = true;
+                intervals = true;
             }
 
             for name in devices {

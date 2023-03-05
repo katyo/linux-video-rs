@@ -1,4 +1,4 @@
-use crate::{Result, ContentType};
+use crate::{ContentType, Result};
 use std::{
     fs::{File, OpenOptions},
     os::unix::fs::{FileTypeExt, OpenOptionsExt},
