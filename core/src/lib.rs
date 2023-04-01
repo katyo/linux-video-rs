@@ -11,6 +11,7 @@ mod macros;
 mod calls;
 mod extras;
 mod impls;
+mod safe_ref;
 mod types;
 mod utils;
 

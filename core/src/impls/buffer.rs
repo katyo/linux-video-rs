@@ -1,19 +1,19 @@
-use crate::{calls, types::*, DirectionImpl, Internal, IsTimestamp, MethodImpl, Result};
+use crate::{
+    calls,
+    safe_ref::{Lock, Mut},
+    types::*,
+    DirectionImpl, Internal, IsTimestamp, MethodImpl, Result,
+};
 use core::{
     marker::PhantomData,
     mem::{ManuallyDrop, MaybeUninit},
     num::NonZeroUsize,
 };
 use getset::CopyGetters;
-use std::{collections::VecDeque, os::unix::io::RawFd};
-
-#[cfg(not(feature = "thread-safe"))]
-use std::cell::{Cell, RefCell, RefMut};
-
-#[cfg(feature = "thread-safe")]
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Mutex, MutexGuard, RwLock,
+use std::{
+    collections::VecDeque,
+    os::unix::io::RawFd,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 /// Direction types
@@ -483,32 +483,17 @@ impl<Met: Method> Drop for BufferState<Met> {
 #[derive(CopyGetters)]
 pub struct QueueData<Dir, Met: Method> {
     /// Requested buffers
-    #[cfg(not(feature = "thread-safe"))]
-    buffers: Vec<RefCell<BufferState<Met>>>,
-
-    /// Requested buffers
-    #[cfg(feature = "thread-safe")]
-    buffers: Vec<Mutex<BufferState<Met>>>,
+    buffers: Vec<Mut<BufferState<Met>>>,
 
     /// Dequeued buffers indexes
-    #[cfg(not(feature = "thread-safe"))]
-    dequeued: RefCell<VecDeque<u32>>,
-
-    /// Dequeued buffers indexes
-    #[cfg(feature = "thread-safe")]
-    dequeued: RwLock<VecDeque<u32>>,
+    dequeued: Mut<VecDeque<u32>>,
 
     /// Stream on flag
-    #[cfg(not(feature = "thread-safe"))]
-    on: Cell<bool>,
-
-    /// Stream on flag
-    #[cfg(feature = "thread-safe")]
     on: AtomicBool,
 
     /// Buffers type
     #[getset(get_copy = "pub")]
-    type_: Internal<BufferType>,
+    buffer_type: Internal<BufferType>,
 
     _phantom: PhantomData<Dir>,
 }
@@ -527,48 +512,32 @@ impl<Dir, Met: Method> QueueData<Dir, Met> {
 
 impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Create buffers queue
-    pub fn new(fd: RawFd, type_: ContentType, count: u32) -> Result<Self>
+    pub fn new(fd: RawFd, content_type: ContentType, count: u32) -> Result<Self>
     where
         Dir: Direction,
     {
-        let type_ = Dir::buffer_type(type_);
+        let buffer_type = Dir::buffer_type(content_type);
 
-        let request_buffers = Internal::<RequestBuffers>::request(fd, type_, Met::MEMORY, count)?;
+        let request_buffers =
+            Internal::<RequestBuffers>::request(fd, buffer_type, Met::MEMORY, count)?;
 
         let count = request_buffers.count;
 
         let mut buffers = Vec::with_capacity(count as _);
 
         for index in 0..count {
-            let mut buffer = Internal::<Buffer>::new(type_, Met::MEMORY, index);
+            let mut buffer = Internal::<Buffer>::new(buffer_type, Met::MEMORY, index);
             buffer.query(fd)?;
             let data = BufferState::new(fd, buffer)?;
 
-            #[cfg(not(feature = "thread-safe"))]
-            buffers.push(RefCell::new(data));
-
-            #[cfg(feature = "thread-safe")]
-            buffers.push(Mutex::new(data));
+            buffers.push(Mut::new(data));
         }
-
-        let type_ = type_.into();
 
         Ok(QueueData {
             buffers,
-
-            #[cfg(not(feature = "thread-safe"))]
-            dequeued: RefCell::new(VecDeque::with_capacity(count as _)),
-
-            #[cfg(feature = "thread-safe")]
-            dequeued: RwLock::new(VecDeque::with_capacity(count as _)),
-
-            #[cfg(not(feature = "thread-safe"))]
-            on: Cell::new(false),
-
-            #[cfg(feature = "thread-safe")]
+            dequeued: Mut::new(VecDeque::with_capacity(count as _)),
             on: AtomicBool::new(false),
-
-            type_,
+            buffer_type: buffer_type.into(),
             _phantom: PhantomData,
         }
         .into())
@@ -579,7 +548,7 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
         self.off(fd)?;
 
         let _request_buffers =
-            Internal::<RequestBuffers>::request(fd, *self.type_, Met::MEMORY, 0)?;
+            Internal::<RequestBuffers>::request(fd, *self.buffer_type, Met::MEMORY, 0)?;
 
         Ok(())
     }
@@ -587,25 +556,13 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Is queue started
     #[inline(always)]
     fn is_on(&self) -> bool {
-        #[cfg(not(feature = "thread-safe"))]
-        {
-            self.on.get()
-        }
-
-        #[cfg(feature = "thread-safe")]
-        {
-            self.on.load(Ordering::SeqCst)
-        }
+        self.on.load(Ordering::SeqCst)
     }
 
     /// Start stream
     fn on(&self, fd: RawFd) -> Result<()> {
-        self.type_.stream_on(fd)?;
+        self.buffer_type.stream_on(fd)?;
 
-        #[cfg(not(feature = "thread-safe"))]
-        self.on.set(true);
-
-        #[cfg(feature = "thread-safe")]
         self.on.store(true, Ordering::SeqCst);
 
         Ok(())
@@ -613,12 +570,8 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
 
     /// Stop stream and mark all buffers as dequeued
     fn off(&self, fd: RawFd) -> Result<()> {
-        self.type_.stream_off(fd)?;
+        self.buffer_type.stream_off(fd)?;
 
-        #[cfg(not(feature = "thread-safe"))]
-        self.on.set(false);
-
-        #[cfg(feature = "thread-safe")]
         self.on.store(false, Ordering::SeqCst);
 
         // stream_off removes all buffers from both queues
@@ -631,24 +584,12 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Dequeue all buffers
     fn dequeue_all(&self) {
         for index in 0..self.buffers.len() {
-            if let Ok(mut data) = {
+            if let Some(mut data) = {
                 let buffer = &self.buffers[index];
-
-                #[cfg(not(feature = "thread-safe"))]
-                let buffer = buffer.try_borrow_mut();
-
-                #[cfg(feature = "thread-safe")]
-                let buffer = buffer.try_lock();
-
-                buffer
+                buffer.try_lock()
             } {
                 data.mark_dequeued();
-
-                #[cfg(not(feature = "thread-safe"))]
-                self.dequeued.borrow_mut().push_back(index as _);
-
-                #[cfg(feature = "thread-safe")]
-                self.dequeued.write().unwrap().push_back(index as _);
+                self.dequeued.lock().push_back(index as _);
             }
         }
     }
@@ -656,25 +597,13 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Dequeue queued buffers
     fn dequeue_queued(&self) {
         for index in 0..self.buffers.len() {
-            if let Ok(mut data) = {
+            if let Some(mut data) = {
                 let buffer = &self.buffers[index];
-
-                #[cfg(not(feature = "thread-safe"))]
-                let buffer = buffer.try_borrow_mut();
-
-                #[cfg(feature = "thread-safe")]
-                let buffer = buffer.try_lock();
-
-                buffer
+                buffer.try_lock()
             } {
                 if data.is_queued() {
                     data.mark_dequeued();
-
-                    #[cfg(not(feature = "thread-safe"))]
-                    self.dequeued.borrow_mut().push_back(index as _);
-
-                    #[cfg(feature = "thread-safe")]
-                    self.dequeued.write().unwrap().push_back(index as _);
+                    self.dequeued.lock().push_back(index as _);
                 }
             }
         }
@@ -683,24 +612,12 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Dequeue single unused buffer
     fn dequeue_unused(&self) -> Option<BufferData<'_, Dir, Met>> {
         for index in 0..self.buffers.len() {
-            if let Ok(data) = {
+            if let Some(data) = {
                 let buffer = &self.buffers[index];
-
-                #[cfg(not(feature = "thread-safe"))]
-                let buffer = buffer.try_borrow_mut();
-
-                #[cfg(feature = "thread-safe")]
-                let buffer = buffer.try_lock();
-
-                buffer
+                buffer.try_lock()
             } {
                 if !data.is_queued() {
-                    #[cfg(not(feature = "thread-safe"))]
-                    self.dequeued.borrow_mut().push_back(index as _);
-
-                    #[cfg(feature = "thread-safe")]
-                    self.dequeued.write().unwrap().push_back(index as _);
-
+                    self.dequeued.lock().push_back(index as _);
                     return Some(BufferData::new(data));
                 }
             }
@@ -713,32 +630,15 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
         // we need enqueue only first N buffers which is ready
         // (already processed by user)
         while let Some(first) = {
-            #[cfg(not(feature = "thread-safe"))]
-            let dequeued = self.dequeued.borrow();
-
-            #[cfg(feature = "thread-safe")]
-            let dequeued = self.dequeued.read().unwrap();
-
+            let dequeued = self.dequeued.lock();
             dequeued.front().copied()
         } {
-            if let Ok(mut data) = {
+            if let Some(mut data) = {
                 let buffer = &self.buffers[first as usize];
-
-                #[cfg(not(feature = "thread-safe"))]
-                let buffer = buffer.try_borrow_mut();
-
-                #[cfg(feature = "thread-safe")]
-                let buffer = buffer.try_lock();
-
-                buffer
+                buffer.try_lock()
             } {
                 data.enqueue(fd)?;
-
-                #[cfg(not(feature = "thread-safe"))]
-                self.dequeued.borrow_mut().pop_front();
-
-                #[cfg(feature = "thread-safe")]
-                self.dequeued.write().unwrap().pop_front();
+                self.dequeued.lock().pop_front();
             } else {
                 // stop on first not ready buffer to preserve sequence
                 break;
@@ -750,31 +650,18 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
 
     /// Try dequeue buffer
     fn dequeue(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>> {
-        let mut buffer = Internal::<Buffer>::new(*self.type_, Met::MEMORY, 0);
+        let mut buffer = Internal::<Buffer>::new(*self.buffer_type, Met::MEMORY, 0);
 
         buffer.dequeue(fd)?;
 
         let index = buffer.index as usize;
 
-        if let Ok(mut data) = {
+        if let Some(mut data) = {
             let buffer = &self.buffers[index];
-
-            #[cfg(not(feature = "thread-safe"))]
-            let buffer = buffer.try_borrow_mut();
-
-            #[cfg(feature = "thread-safe")]
-            let buffer = buffer.try_lock();
-
-            buffer
+            buffer.try_lock()
         } {
             data.reuse(buffer);
-
-            #[cfg(not(feature = "thread-safe"))]
-            self.dequeued.borrow_mut().push_back(index as _);
-
-            #[cfg(feature = "thread-safe")]
-            self.dequeued.write().unwrap().push_back(index as _);
-
+            self.dequeued.lock().push_back(index as _);
             Ok(BufferData::new(data))
         } else {
             unreachable!();
@@ -825,12 +712,7 @@ impl DirectionImpl for Out {
 }
 
 pub struct BufferData<'r, Dir, Met: Method> {
-    #[cfg(not(feature = "thread-safe"))]
-    data: RefMut<'r, BufferState<Met>>,
-
-    #[cfg(feature = "thread-safe")]
-    data: MutexGuard<'r, BufferState<Met>>,
-
+    data: Lock<'r, BufferState<Met>>,
     _phantom: PhantomData<Dir>,
 }
 
@@ -871,18 +753,8 @@ impl<'r, Met: Method> BufferData<'r, Out, Met> {
 }
 
 impl<'r, Dir, Met: Method> BufferData<'r, Dir, Met> {
-    #[cfg(not(feature = "thread-safe"))]
     #[inline(always)]
-    fn new(data: RefMut<'r, BufferState<Met>>) -> Self {
-        Self {
-            data,
-            _phantom: PhantomData,
-        }
-    }
-
-    #[cfg(feature = "thread-safe")]
-    #[inline(always)]
-    fn new(data: MutexGuard<'r, BufferState<Met>>) -> Self {
+    fn new(data: Lock<'r, BufferState<Met>>) -> Self {
         Self {
             data,
             _phantom: PhantomData,
