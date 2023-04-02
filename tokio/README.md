@@ -12,6 +12,8 @@ The primary design goal is an optimal balance between safety and overhead.
 The implementation much closer to system calls than v4l.
 Interface types wraps kernel types to avoid unnecessary copying.
 
+The secondary goal is providing full set of features of the original API.
+
 At end this is my demure attempt to do things right.
 
 ## Crates
