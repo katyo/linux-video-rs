@@ -427,7 +427,7 @@ impl<Dir: Direction, Met: Method> Stream<Dir, Met> {
     }
 
     /// Get next frame to write or read
-    pub async fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
+    pub async fn next(&self) -> Result<BufferRef<Dir, Met>> {
         let fd = self.file.as_raw_fd();
 
         loop {

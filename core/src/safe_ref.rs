@@ -1,7 +1,7 @@
-#[cfg(not(feature = "parallel"))]
+#[cfg(not(feature = "thread-safe"))]
 use std::cell::RefCell as Cell;
 
-#[cfg(feature = "parallel")]
+#[cfg(feature = "thread-safe")]
 use std::sync::Mutex as Cell;
 
 #[cfg(not(feature = "thread-safe"))]

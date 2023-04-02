@@ -363,7 +363,7 @@ impl<Dir: Direction, Met: Method> Stream<Dir, Met> {
     }
 
     /// Get next frame to write or read
-    pub fn next(&self) -> Result<BufferData<'_, Dir, Met>> {
+    pub fn next(&self) -> Result<BufferRef<Dir, Met>> {
         self.queue.next(self.file.as_raw_fd())
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    impls::{BufferData, QueueData},
+    impls::{BufferRef, QueueData},
     Buffer, Internal, Method, Result,
 };
 use std::os::unix::io::RawFd;
@@ -10,7 +10,7 @@ pub trait DirectionImpl: Sized {
     fn next<Met: Method>(
         queue: &Internal<QueueData<Self, Met>>,
         fd: RawFd,
-    ) -> Result<BufferData<'_, Self, Met>>;
+    ) -> Result<BufferRef<Self, Met>>;
 }
 
 /// I/O method implementation details

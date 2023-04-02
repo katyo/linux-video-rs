@@ -59,6 +59,7 @@ async fn capture_webcam() {
         let mut i = 0;
         loop {
             let buffer = stream.next().await.unwrap();
+            let buffer = buffer.lock();
             println!("#{i} {buffer}");
 
             let data: &[u8] = buffer.as_ref();

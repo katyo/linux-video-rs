@@ -569,7 +569,7 @@ pub struct PixFormat {
     /// The driver will set the value for uncompressed images.
     ///
     /// Clients are allowed to set the sizeimage field for variable length compressed data
-    /// flagged with [FmtFlag::Compressed] at fn [FmtDesc::query], but the driver may
+    /// flagged with [FmtFlag::Compressed], but the driver may
     /// ignore it and set the value itself, or it may modify the provided value based on
     /// alignment requirements or minimum/maximum size requirements. If the client wants
     /// to leave this to the driver, then it should set sizeimage to 0.

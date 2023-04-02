@@ -1,8 +1,8 @@
 use crate::{
     calls,
-    safe_ref::{Lock, Mut},
+    safe_ref::{Lock, Mut, Ref},
     types::*,
-    DirectionImpl, Internal, IsTimestamp, MethodImpl, Result,
+    ContentType, Direction, DirectionImpl, In, Internal, IsTimestamp, MethodImpl, Out, Result,
 };
 use core::{
     marker::PhantomData,
@@ -15,226 +15,6 @@ use std::{
     os::unix::io::RawFd,
     sync::atomic::{AtomicBool, Ordering},
 };
-
-/// Direction types
-pub trait Direction: DirectionImpl {
-    const IN: bool;
-    const OUT: bool;
-
-    fn buffer_type(content: ContentType) -> BufferType;
-}
-
-macro_rules! direction_impl {
-    ($($(#[$($meta:meta)*])* $type:ident ($is_input:literal) {
-        $($(#[$($variant_meta:meta)*])* $content_type:ident = $buffer_type:ident,)*
-    })*) => {
-        $(
-            $(#[$($meta)*])*
-            pub struct $type;
-
-            impl Direction for $type {
-                const IN: bool = $is_input;
-                const OUT: bool = !$is_input;
-
-                fn buffer_type(content: ContentType) -> BufferType {
-                    match content {
-                        $(
-                            ContentType::$content_type => BufferType::$buffer_type,
-                        )*
-                    }
-                }
-            }
-        )*
-    };
-}
-
-enum_impl! {
-    /// Buffer content type
-    enum ContentType {
-        Video,
-        Vbi,
-        SlicedVbi,
-        VideoOverlay,
-        VideoMplane,
-        Sdr,
-        Meta,
-    }
-}
-
-impl ContentType {
-    /// All content types
-    pub const ALL: [Self; 7] = [
-        Self::Video,
-        Self::Vbi,
-        Self::SlicedVbi,
-        Self::VideoOverlay,
-        Self::VideoMplane,
-        Self::Sdr,
-        Self::Meta,
-    ];
-
-    /// All video types
-    pub const VIDEO: [Self; 3] = [Self::Video, Self::VideoOverlay, Self::VideoMplane];
-
-    /// Is video type
-    pub fn is_video(self) -> bool {
-        matches!(self, Self::Video | Self::VideoOverlay | Self::VideoMplane)
-    }
-
-    /// Get buffer type using direction
-    pub fn buffer_type<Dir: Direction>(self) -> BufferType {
-        Dir::buffer_type(self)
-    }
-}
-
-direction_impl! {
-    /// Capture (input direction)
-    In (true) {
-        /// Video capture
-        Video = VideoCapture,
-        Vbi = VbiCapture,
-        SlicedVbi = SlicedVbiCapture,
-        VideoOverlay = VideoOverlay,
-        VideoMplane = VideoCaptureMplane,
-        Sdr = SdrCapture,
-        Meta = MetaCapture,
-    }
-
-    /// Render (output direction)
-    Out (false) {
-        Video = VideoOutput,
-        Vbi = VbiOutput,
-        SlicedVbi = SlicedVbiOutput,
-        VideoOverlay = VideoOutputOverlay,
-        VideoMplane = VideoOutputMplane,
-        Sdr = SdrOutput,
-        Meta = MetaOutput,
-    }
-}
-
-impl BufferType {
-    /// All buffer types
-    pub const ALL: [Self; 14] = [
-        Self::VideoCapture,
-        Self::VbiCapture,
-        Self::SlicedVbiCapture,
-        Self::VideoOverlay,
-        Self::VideoCaptureMplane,
-        Self::SdrCapture,
-        Self::MetaCapture,
-        Self::VideoOutput,
-        Self::VbiOutput,
-        Self::SlicedVbiOutput,
-        Self::VideoOutputOverlay,
-        Self::VideoOutputMplane,
-        Self::SdrOutput,
-        Self::MetaOutput,
-    ];
-
-    /// Capture buffer types
-    pub const CAPTURE: [Self; 7] = [
-        Self::VideoCapture,
-        Self::VbiCapture,
-        Self::SlicedVbiCapture,
-        Self::VideoOverlay,
-        Self::VideoCaptureMplane,
-        Self::SdrCapture,
-        Self::MetaCapture,
-    ];
-
-    /// Output buffer types
-    pub const OUTPUT: [Self; 7] = [
-        Self::VideoOutput,
-        Self::VbiOutput,
-        Self::SlicedVbiOutput,
-        Self::VideoOutputOverlay,
-        Self::VideoOutputMplane,
-        Self::SdrOutput,
-        Self::MetaOutput,
-    ];
-
-    /// Video buffer types
-    pub const VIDEO: [Self; 6] = [
-        Self::VideoCapture,
-        Self::VideoOverlay,
-        Self::VideoCaptureMplane,
-        Self::VideoOutput,
-        Self::VideoOutputOverlay,
-        Self::VideoOutputMplane,
-    ];
-
-    /// Vbi buffer types
-    pub const VBI: [Self; 4] = [
-        Self::VbiCapture,
-        Self::SlicedVbiCapture,
-        Self::VbiOutput,
-        Self::SlicedVbiOutput,
-    ];
-
-    /// Sdr buffer types
-    pub const SDR: [Self; 2] = [Self::SdrCapture, Self::SdrOutput];
-
-    /// Meta buffer types
-    pub const META: [Self; 2] = [Self::MetaCapture, Self::MetaOutput];
-
-    /// Single-planar video buffer types
-    pub const VIDEO_SPLANE: [Self; 2] = [Self::VideoCapture, Self::VideoOutput];
-
-    /// Multi-planar video buffer types
-    pub const VIDEO_MPLANE: [Self; 2] = [Self::VideoCaptureMplane, Self::VideoOutputMplane];
-
-    /// Overlay video buffer types
-    pub const VIDEO_OVERLAY: [Self; 2] = [Self::VideoOverlay, Self::VideoOutputOverlay];
-
-    /// Check that buffer type is supported according to capabilities
-    pub fn is_supported(self, capabilities: CapabilityFlag) -> bool {
-        match self {
-            Self::VideoCapture => capabilities.contains(CapabilityFlag::VideoCapture),
-            Self::VbiCapture => capabilities.contains(CapabilityFlag::VbiCapture),
-            Self::SlicedVbiCapture => capabilities.contains(CapabilityFlag::SlicedVbiCapture),
-            Self::VideoOverlay => capabilities.contains(CapabilityFlag::VideoOverlay),
-            Self::VideoCaptureMplane => capabilities.contains(CapabilityFlag::VideoCaptureMplane),
-            Self::SdrCapture => capabilities.contains(CapabilityFlag::SdrCapture),
-            Self::MetaCapture => capabilities.contains(CapabilityFlag::MetaCapture),
-            Self::VideoOutput => capabilities.contains(CapabilityFlag::VideoOutput),
-            Self::VbiOutput => capabilities.contains(CapabilityFlag::VbiOutput),
-            Self::SlicedVbiOutput => capabilities.contains(CapabilityFlag::SlicedVbiOutput),
-            Self::VideoOutputOverlay => capabilities.contains(CapabilityFlag::VideoOutputOverlay),
-            Self::VideoOutputMplane => capabilities.contains(CapabilityFlag::VideoOutputMplane),
-            Self::SdrOutput => capabilities.contains(CapabilityFlag::SdrOutput),
-            Self::MetaOutput => capabilities.contains(CapabilityFlag::MetaOutput),
-        }
-    }
-
-    /// Get corresponding content type
-    pub fn content(&self) -> ContentType {
-        match self {
-            Self::VideoCapture | Self::VideoOutput => ContentType::Video,
-            Self::VbiCapture | Self::VbiOutput => ContentType::Vbi,
-            Self::SlicedVbiCapture | Self::SlicedVbiOutput => ContentType::SlicedVbi,
-            Self::VideoOverlay | Self::VideoOutputOverlay => ContentType::VideoOverlay,
-            Self::VideoCaptureMplane | Self::VideoOutputMplane => ContentType::VideoMplane,
-            Self::SdrCapture | Self::SdrOutput => ContentType::Sdr,
-            Self::MetaCapture | Self::MetaOutput => ContentType::Meta,
-        }
-    }
-}
-
-impl Internal<BufferType> {
-    /// Start stream
-    pub fn stream_on(self, fd: RawFd) -> Result<()> {
-        let type_ = *self.as_ref() as int;
-
-        unsafe_call!(calls::stream_on(fd, &type_).map(|_| ()))
-    }
-
-    /// Stop stream
-    pub fn stream_off(self, fd: RawFd) -> Result<()> {
-        let type_ = *self.as_ref() as int;
-
-        unsafe_call!(calls::stream_off(fd, &type_).map(|_| ()))
-    }
-}
 
 impl Internal<RequestBuffers> {
     /// Request buffers
@@ -483,7 +263,7 @@ impl<Met: Method> Drop for BufferState<Met> {
 #[derive(CopyGetters)]
 pub struct QueueData<Dir, Met: Method> {
     /// Requested buffers
-    buffers: Vec<Mut<BufferState<Met>>>,
+    buffers: Vec<Ref<Mut<BufferState<Met>>>>,
 
     /// Dequeued buffers indexes
     dequeued: Mut<VecDeque<u32>>,
@@ -530,7 +310,7 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
             buffer.query(fd)?;
             let data = BufferState::new(fd, buffer)?;
 
-            buffers.push(Mut::new(data));
+            buffers.push(Ref::new(Mut::new(data)));
         }
 
         Ok(QueueData {
@@ -561,7 +341,9 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
 
     /// Start stream
     fn on(&self, fd: RawFd) -> Result<()> {
-        self.buffer_type.stream_on(fd)?;
+        let type_ = *self.buffer_type.as_ref() as int;
+
+        unsafe_call!(calls::stream_on(fd, &type_).map(|_| ()))?;
 
         self.on.store(true, Ordering::SeqCst);
 
@@ -570,7 +352,9 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
 
     /// Stop stream and mark all buffers as dequeued
     fn off(&self, fd: RawFd) -> Result<()> {
-        self.buffer_type.stream_off(fd)?;
+        let type_ = *self.buffer_type.as_ref() as int;
+
+        unsafe_call!(calls::stream_off(fd, &type_).map(|_| ()))?;
 
         self.on.store(false, Ordering::SeqCst);
 
@@ -584,11 +368,9 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Dequeue all buffers
     fn dequeue_all(&self) {
         for index in 0..self.buffers.len() {
-            if let Some(mut data) = {
-                let buffer = &self.buffers[index];
-                buffer.try_lock()
-            } {
-                data.mark_dequeued();
+            let buffer_ref = &self.buffers[index];
+            if Ref::strong_count(buffer_ref) == 1 {
+                buffer_ref.lock().mark_dequeued();
                 self.dequeued.lock().push_back(index as _);
             }
         }
@@ -597,12 +379,11 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     /// Dequeue queued buffers
     fn dequeue_queued(&self) {
         for index in 0..self.buffers.len() {
-            if let Some(mut data) = {
-                let buffer = &self.buffers[index];
-                buffer.try_lock()
-            } {
-                if data.is_queued() {
-                    data.mark_dequeued();
+            let buffer_ref = &self.buffers[index];
+            if Ref::strong_count(buffer_ref) == 1 {
+                let mut buffer_data = buffer_ref.lock();
+                if buffer_data.is_queued() {
+                    buffer_data.mark_dequeued();
                     self.dequeued.lock().push_back(index as _);
                 }
             }
@@ -610,16 +391,12 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     }
 
     /// Dequeue single unused buffer
-    fn dequeue_unused(&self) -> Option<BufferData<'_, Dir, Met>> {
+    fn dequeue_unused(&self) -> Option<BufferRef<Dir, Met>> {
         for index in 0..self.buffers.len() {
-            if let Some(data) = {
-                let buffer = &self.buffers[index];
-                buffer.try_lock()
-            } {
-                if !data.is_queued() {
-                    self.dequeued.lock().push_back(index as _);
-                    return Some(BufferData::new(data));
-                }
+            let buffer_ref = &self.buffers[index];
+            if Ref::strong_count(buffer_ref) == 1 && !buffer_ref.lock().is_queued() {
+                self.dequeued.lock().push_back(index as _);
+                return Some(BufferRef::new(buffer_ref));
             }
         }
         None
@@ -633,11 +410,10 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
             let dequeued = self.dequeued.lock();
             dequeued.front().copied()
         } {
-            if let Some(mut data) = {
-                let buffer = &self.buffers[first as usize];
-                buffer.try_lock()
-            } {
-                data.enqueue(fd)?;
+            let buffer_ref = &self.buffers[first as usize];
+            if Ref::strong_count(buffer_ref) == 1 {
+                let mut buffer_data = buffer_ref.lock();
+                buffer_data.enqueue(fd)?;
                 self.dequeued.lock().pop_front();
             } else {
                 // stop on first not ready buffer to preserve sequence
@@ -649,27 +425,22 @@ impl<Dir, Met: Method> Internal<QueueData<Dir, Met>> {
     }
 
     /// Try dequeue buffer
-    fn dequeue(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>> {
+    fn dequeue(&self, fd: RawFd) -> Result<BufferRef<Dir, Met>> {
         let mut buffer = Internal::<Buffer>::new(*self.buffer_type, Met::MEMORY, 0);
-
         buffer.dequeue(fd)?;
-
         let index = buffer.index as usize;
-
-        if let Some(mut data) = {
-            let buffer = &self.buffers[index];
-            buffer.try_lock()
-        } {
-            data.reuse(buffer);
+        let buffer_ref = &self.buffers[index];
+        if Ref::strong_count(buffer_ref) == 1 {
+            buffer_ref.lock().reuse(buffer);
             self.dequeued.lock().push_back(index as _);
-            Ok(BufferData::new(data))
+            Ok(BufferRef::new(buffer_ref))
         } else {
             unreachable!();
         }
     }
 
     /// Get next buffer to read or write
-    pub fn next(&self, fd: RawFd) -> Result<BufferData<'_, Dir, Met>>
+    pub fn next(&self, fd: RawFd) -> Result<BufferRef<Dir, Met>>
     where
         Dir: Direction,
     {
@@ -681,7 +452,7 @@ impl DirectionImpl for In {
     fn next<Met: Method>(
         queue: &Internal<QueueData<Self, Met>>,
         fd: RawFd,
-    ) -> Result<BufferData<'_, Self, Met>> {
+    ) -> Result<BufferRef<Self, Met>> {
         if queue.is_on() {
             queue.enqueue_ready(fd)?;
         } else {
@@ -697,7 +468,7 @@ impl DirectionImpl for Out {
     fn next<Met: Method>(
         queue: &Internal<QueueData<Self, Met>>,
         fd: RawFd,
-    ) -> Result<BufferData<'_, Self, Met>> {
+    ) -> Result<BufferRef<Self, Met>> {
         queue.enqueue_ready(fd)?;
         if queue.is_on() {
             queue.dequeue(fd)
@@ -708,6 +479,43 @@ impl DirectionImpl for Out {
             queue.on(fd)?;
             queue.dequeue(fd)
         }
+    }
+}
+
+pub struct BufferRef<Dir, Met: Method> {
+    data: Ref<Mut<BufferState<Met>>>,
+    _phantom: PhantomData<Dir>,
+}
+
+impl<Dir, Met: Method> BufferRef<Dir, Met> {
+    #[inline(always)]
+    fn new(data: &Ref<Mut<BufferState<Met>>>) -> Self {
+        Self {
+            data: data.clone(),
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Get access to buffer data
+    pub fn lock(&self) -> BufferData<'_, Dir, Met> {
+        BufferData {
+            data: self.data.lock(),
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Try get access to buffer data
+    pub fn try_lock(&self) -> Option<BufferData<'_, Dir, Met>> {
+        Some(BufferData {
+            data: self.data.try_lock()?,
+            _phantom: PhantomData,
+        })
+    }
+}
+
+impl<Dir, Met: Method> core::fmt::Display for BufferRef<Dir, Met> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.data.lock().buffer.as_ref().fmt(f)
     }
 }
 
@@ -753,14 +561,6 @@ impl<'r, Met: Method> BufferData<'r, Out, Met> {
 }
 
 impl<'r, Dir, Met: Method> BufferData<'r, Dir, Met> {
-    #[inline(always)]
-    fn new(data: Lock<'r, BufferState<Met>>) -> Self {
-        Self {
-            data,
-            _phantom: PhantomData,
-        }
-    }
-
     /// Check no used bytes in buffer
     pub fn is_empty(&self) -> bool {
         self.data.buffer.bytes_used == 0

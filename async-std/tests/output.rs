@@ -58,7 +58,8 @@ async fn output_hdmi() {
 
         let mut i = 0;
         loop {
-            let mut buffer = stream.next().await.unwrap();
+            let buffer = stream.next().await.unwrap();
+            let mut buffer = buffer.lock();
             println!("#{i} {buffer}");
 
             buffer.set_len(imgsize as _);

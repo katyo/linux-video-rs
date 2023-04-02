@@ -165,6 +165,7 @@ fn main() -> std::io::Result<()> {
 
     let mut i = 0;
     while let Ok(buffer) = stream.next() {
+        let buffer = buffer.lock();
         println!("#{i} {buffer}");
 
         // Get reference to frame buffer contents
@@ -197,10 +198,11 @@ fn main() -> std::io::Result<()> {
 
     let mut i = 0;
     while let Ok(mut buffer) = stream.next() {
+        let mut buffer = buffer.lock();
         println!("#{i} {buffer}");
 
         // Get reference to frame buffer contents
-        let data: &mut [u8] = buffer.as_mut();
+        let _data: &mut [u8] = buffer.as_mut();
 
         i += 1;
         if i > 30 {

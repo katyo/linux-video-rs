@@ -1095,9 +1095,11 @@ enum_impl! {
         LimRange,
     }
 
+    #[derive(Default)]
     enum Priority {
         Unset,
         Background,
+        #[default]
         Interactive,
         Record,
     }
@@ -1508,12 +1510,6 @@ impl CtrlType {
 
     pub fn is_compound(&self) -> bool {
         *self as u32 >= 0x100
-    }
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Interactive
     }
 }
 

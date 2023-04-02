@@ -170,6 +170,7 @@ async fn main() -> std::io::Result<()> {
 
     let mut i = 0;
     while let Ok(buffer) = stream.next().await {
+        let buffer = buffer.lock();
         println!("#{i} {buffer}");
 
         // Get reference to frame buffer contents
@@ -203,6 +204,7 @@ async fn main() -> std::io::Result<()> {
 
     let mut i = 0;
     while let Ok(mut buffer) = stream.next().await {
+        let mut buffer = buffer.lock();
         println!("#{i} {buffer}");
 
         // Get reference to frame buffer contents
