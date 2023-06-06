@@ -1,6 +1,6 @@
 [package]
 name = "async-std-linux-video"
-description = "Linux V4L2 device interfacing with tokio"
+description = "Linux V4L2 device interfacing with async-std"
 version = "0.1.0"
 authors = ["K. <kayo@illumium.org>"]
 license = "MIT"
