@@ -167,6 +167,35 @@ impl Device {
         }
     }
 
+    /// Get stream parameters
+    pub async fn param(&self, type_: BufferType) -> Result<StreamParm> {
+        let fd = self.as_raw_fd();
+        asyncify(move || {
+            let mut param = StreamParm::from(type_);
+            Internal::from(&mut param).get(fd)?;
+            Ok(param)
+        })
+        .await
+    }
+
+    /// Get stream parameters
+    pub async fn get_param(&self, param: &mut StreamParm) -> Result<()> {
+        *param = self.param(param.type_()).await?;
+        Ok(())
+    }
+
+    /// Set stream parameters
+    pub async fn set_param(&self, param: &mut StreamParm) -> Result<()> {
+        let fd = self.as_raw_fd();
+        let mut param_ = *param;
+        *param = asyncify(move || -> Result<StreamParm> {
+            Internal::from(&mut param_).set(fd)?;
+            Ok(param_)
+        })
+        .await?;
+        Ok(())
+    }
+
     /// Create stream to input/output data
     pub fn stream<Dir: Direction, Met: Method>(
         &self,

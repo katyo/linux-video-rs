@@ -267,7 +267,7 @@ enum_impl! {
     }
 
     enum IoMode {
-        Defaut = 0,
+        Default = 0,
         HighQuality = 1,
     }
 
@@ -1667,5 +1667,17 @@ impl Quantization {
         } else {
             Self::LimRange
         }
+    }
+}
+
+impl Default for IoCapabilityFlag {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl Default for IoMode {
+    fn default() -> Self {
+        Self::Default
     }
 }

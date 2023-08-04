@@ -134,6 +134,23 @@ impl Device {
         }
     }
 
+    /// Get stream parameters
+    pub fn param(&self, type_: BufferType) -> Result<StreamParm> {
+        let mut param = StreamParm::from(type_);
+        self.get_param(&mut param)?;
+        Ok(param)
+    }
+
+    /// Get stream parameters
+    pub fn get_param(&self, param: &mut StreamParm) -> Result<()> {
+        Internal::from(param).get(self.as_raw_fd())
+    }
+
+    /// Set stream parameters
+    pub fn set_param(&self, param: &mut StreamParm) -> Result<()> {
+        Internal::from(param).set(self.as_raw_fd())
+    }
+
     /// Create stream to input/output data
     pub fn stream<Dir: Direction, Met: Method>(
         &self,

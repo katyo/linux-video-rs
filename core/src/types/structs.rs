@@ -399,7 +399,7 @@ pub struct Rect {
 
 /// Fraction value
 #[repr(C)]
-#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
+#[derive(Debug, Copy, Clone, Default, CopyGetters, Setters)]
 pub struct Fract {
     /// Numerator
     #[getset(get_copy = "pub", set = "pub")]
@@ -1082,7 +1082,7 @@ pub struct Window {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, CopyGetters, Setters)]
+#[derive(Debug, Copy, Clone, Default, CopyGetters, Setters)]
 pub struct CaptureParm {
     #[getset(get_copy = "pub", set = "pub")]
     pub(crate) capability: IoCapabilityFlag,
@@ -1103,13 +1103,23 @@ pub struct CaptureParm {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default, CopyGetters, Setters)]
 pub struct OutputParm {
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) capability: IoCapabilityFlag,
+
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) output_mode: IoMode,
+
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) time_per_frame: Fract,
+
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) extended_mode: u32,
+
+    #[getset(get_copy = "pub", set = "pub")]
     pub(crate) write_buffers: u32,
+
     pub(crate) reserved: [u32; 4],
 }
 
@@ -1819,8 +1829,10 @@ pub(crate) union FormatUnion {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CopyGetters)]
 pub struct StreamParm {
+    /// Buffer type
+    #[getset(get_copy = "pub")]
     pub(crate) type_: BufferType,
     pub(crate) parm: StreamParmUnion,
 }

@@ -7,6 +7,10 @@ fn main() -> std::io::Result<()> {
     let fmt = dev.format(BufferType::VideoCapture)?;
     println!("  {fmt}");
 
+    // Get current params
+    let prm = dev.param(BufferType::VideoCapture)?;
+    println!("  {prm}");
+
     // Start video capture stream
     let stream = dev.stream::<In, Mmap>(ContentType::Video, 4)?;
 
